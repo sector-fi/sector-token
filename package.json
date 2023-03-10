@@ -1,0 +1,42 @@
+{
+  "name": "@sc1/contracts",
+  "version": "0.5.11",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "test": "forge test",
+    "deploy:local": "hardhat deploy",
+    "runScript": "hardhat run",
+    "compile": "hardhat compile",
+    "coverage": "forge coverage",
+    "coverage:lcov": "forge coverage --report lcov",
+    "slither": "slither ./src --solc-remaps '@openzeppelin=node_modules/@openzeppelin' --exclude ./packages/contracts/src/test"
+  },
+  "dependencies": {
+    "@nomiclabs/hardhat-ethers": "npm:hardhat-deploy-ethers",
+    "@nomiclabs/hardhat-etherscan": "^3.1.0",
+    "@openzeppelin/contracts": "^4.7.3",
+    "@typechain/ethers-v5": "^10.1.0",
+    "@types/chai": "^4.2.22",
+    "@types/mocha": "^9.0.0",
+    "chai": "^4.3.4",
+    "dotenv": "^16.0.2",
+    "ethers": "^5.7.1",
+    "hardhat": "npm:@gzeoneth/hardhat@2.10.1-gzeon-c8fe47dd4",
+    "hardhat-contract-sizer": "^2.6.1",
+    "hardhat-deploy": "^0.11.18",
+    "hardhat-gas-reporter": "^1.0.4",
+    "hardhat-typechain": "^0.3.5",
+    "tsconfig-paths": "^4.1.0",
+    "typechain": "^8.1.0",
+    "typescript": "^4.8.2"
+  },
+  "resolutions": {
+    "hardhat/**/@ethereumjs/tx": "3.5.0"
+  },
+  "devDependencies": {
+    "@typechain/hardhat": "^6.1.2",
+    "ts-node": "^10.9.1",
+    "yarn": "^1.22.19"
+  }
+}

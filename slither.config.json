@@ -1,0 +1,8 @@
+{
+  "filter_paths": "(test/|lib/)",
+  "solc_remaps": [
+    "forge-std/=lib/forge-std/src/",
+    "@openzeppelin/=node_modules/@openzeppelin/",
+    "hardhat/=node_modules/hardhat/"
+  ]
+}
