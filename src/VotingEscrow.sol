@@ -160,16 +160,16 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	function forceUndelegate(address _addr) external override {
 		require(msg.sender == blocklist, "Only Blocklist");
 		LockedBalance memory locked_ = locked[_addr];
-		address delegatee = locked_.delegatee;
+		// address delegatee = locked_.delegatee;
 		int128 value = locked_.amount;
 
-		if (delegatee != _addr && value > 0) {
-			LockedBalance memory fromLocked;
-			locked_.delegatee = _addr;
-			fromLocked = locked[delegatee];
-			_delegate(delegatee, fromLocked, value, LockAction.UNDELEGATE);
-			_delegate(_addr, locked_, value, LockAction.DELEGATE);
-		}
+		// if (delegatee != _addr && value > 0) {
+		// 	LockedBalance memory fromLocked;
+		// 	locked_.delegatee = _addr;
+		// 	fromLocked = locked[delegatee];
+		// 	_delegate(delegatee, fromLocked, value, LockAction.UNDELEGATE);
+		// 	_delegate(_addr, locked_, value, LockAction.DELEGATE);
+		// }
 	}
 
 	/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~ ///
@@ -379,24 +379,37 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 		uint256 _value,
 		uint256 _unlockTime
 	) external override nonReentrant checkBlocklist {
-		uint256 unlock_time = _floorToWeek(_unlockTime); // Locktime is rounded down to weeks
-		LockedBalance memory locked_ = locked[msg.sender];
+		_lockTo(msg.sender, _value, _unlockTime);
+	}
+
+	function lockTo(
+		address account_,
+		uint256 value_,
+		uint256 unlockTime_
+	) external override nonReentrant checkBlocklist {
+		_lockTo(account_, value_, unlockTime_);
+	}
+
+	// Lock `_value` tokens for `_unlockTime` duration and updates the user's locked and delegated balances accordingly
+	function _lockTo(address account_, uint256 value_, uint256 unlockTime_) internal {
+		uint256 unlock_time = _floorToWeek(unlockTime_); // Locktime is rounded down to weeks
+		LockedBalance memory locked_ = locked[account_];
 		// Validate inputs
-		require(_value > 0, "Only non zero amount");
+		require(value_ > 0, "Only non zero amount");
 		require(locked_.amount == 0, "Lock exists");
 		require(unlock_time >= locked_.end, "Only increase lock end"); // from using quitLock, user should increaseAmount instead
 		require(unlock_time > block.timestamp, "Only future lock end");
 		require(unlock_time <= block.timestamp + MAXTIME, "Exceeds maxtime");
 		// Update lock and voting power (checkpoint)
-		locked_.amount += int128(int256(_value));
+		locked_.amount += int128(int256(value_));
 		locked_.end = unlock_time;
-		locked_.delegated += int128(int256(_value));
-		locked_.delegatee = msg.sender;
-		locked[msg.sender] = locked_;
-		_checkpoint(msg.sender, LockedBalance(0, 0, 0, address(0)), locked_);
+		locked_.delegated += int128(int256(value_));
+		locked_.delegatee = account_;
+		locked[account_] = locked_;
+		_checkpoint(account_, LockedBalance(0, 0, 0, address(0)), locked_);
 		// Deposit locked tokens
-		require(token.transferFrom(msg.sender, address(this), _value), "Transfer failed");
-		emit Deposit(msg.sender, _value, unlock_time, LockAction.CREATE, block.timestamp);
+		require(token.transferFrom(msg.sender, address(this), value_), "Transfer failed");
+		emit Deposit(account_, value_, unlock_time, LockAction.CREATE, block.timestamp);
 	}
 
 	// See IVotingEscrow for documentation
@@ -486,66 +499,66 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 		emit Withdraw(msg.sender, value, LockAction.WITHDRAW, block.timestamp);
 	}
 
-	/// ~~~~~~~~~~~~~~~~~~~~~~~~~~ ///
-	///         DELEGATION         ///
-	/// ~~~~~~~~~~~~~~~~~~~~~~~~~~ ///
+	// /// ~~~~~~~~~~~~~~~~~~~~~~~~~~ ///
+	// ///         DELEGATION         ///
+	// /// ~~~~~~~~~~~~~~~~~~~~~~~~~~ ///
 
-	// See IVotingEscrow for documentation
-	function delegate(address _addr) external override nonReentrant checkBlocklist {
-		LockedBalance memory locked_ = locked[msg.sender];
-		// Validate inputs
-		require(!IBlocklist(blocklist).isBlocked(_addr), "Blocked contract");
-		require(locked_.amount > 0, "No lock");
-		require(locked_.delegatee != _addr, "Already delegated");
-		// Update locks
-		int128 value = locked_.amount;
-		address delegatee = locked_.delegatee;
-		LockedBalance memory fromLocked;
-		LockedBalance memory toLocked;
-		locked_.delegatee = _addr;
-		if (delegatee == msg.sender) {
-			// Delegate
-			fromLocked = locked_;
-			toLocked = locked[_addr];
-		} else if (_addr == msg.sender) {
-			// Undelegate
-			fromLocked = locked[delegatee];
-			toLocked = locked_;
-		} else {
-			// Re-delegate
-			fromLocked = locked[delegatee];
-			toLocked = locked[_addr];
-			// Update owner lock if not involved in delegation
-			locked[msg.sender] = locked_;
-		}
-		require(toLocked.amount > 0, "Delegatee has no lock");
-		require(toLocked.end > block.timestamp, "Delegatee lock expired");
-		require(toLocked.end >= fromLocked.end, "Only delegate to longer lock");
-		_delegate(delegatee, fromLocked, value, LockAction.UNDELEGATE);
-		_delegate(_addr, toLocked, value, LockAction.DELEGATE);
-	}
+	// // See IVotingEscrow for documentation
+	// function delegate(address _addr) external override nonReentrant checkBlocklist {
+	// 	LockedBalance memory locked_ = locked[msg.sender];
+	// 	// Validate inputs
+	// 	require(!IBlocklist(blocklist).isBlocked(_addr), "Blocked contract");
+	// 	require(locked_.amount > 0, "No lock");
+	// 	require(locked_.delegatee != _addr, "Already delegated");
+	// 	// Update locks
+	// 	int128 value = locked_.amount;
+	// 	address delegatee = locked_.delegatee;
+	// 	LockedBalance memory fromLocked;
+	// 	LockedBalance memory toLocked;
+	// 	locked_.delegatee = _addr;
+	// 	if (delegatee == msg.sender) {
+	// 		// Delegate
+	// 		fromLocked = locked_;
+	// 		toLocked = locked[_addr];
+	// 	} else if (_addr == msg.sender) {
+	// 		// Undelegate
+	// 		fromLocked = locked[delegatee];
+	// 		toLocked = locked_;
+	// 	} else {
+	// 		// Re-delegate
+	// 		fromLocked = locked[delegatee];
+	// 		toLocked = locked[_addr];
+	// 		// Update owner lock if not involved in delegation
+	// 		locked[msg.sender] = locked_;
+	// 	}
+	// 	require(toLocked.amount > 0, "Delegatee has no lock");
+	// 	require(toLocked.end > block.timestamp, "Delegatee lock expired");
+	// 	require(toLocked.end >= fromLocked.end, "Only delegate to longer lock");
+	// 	_delegate(delegatee, fromLocked, value, LockAction.UNDELEGATE);
+	// 	_delegate(_addr, toLocked, value, LockAction.DELEGATE);
+	// }
 
-	// Delegates from/to lock and voting power
-	function _delegate(
-		address addr,
-		LockedBalance memory _locked,
-		int128 value,
-		LockAction action
-	) internal {
-		LockedBalance memory newLocked = _copyLock(_locked);
-		if (action == LockAction.DELEGATE) {
-			newLocked.delegated += value;
-			emit Deposit(addr, uint256(int256(value)), newLocked.end, action, block.timestamp);
-		} else {
-			newLocked.delegated -= value;
-			emit Withdraw(addr, uint256(int256(value)), action, block.timestamp);
-		}
-		locked[addr] = newLocked;
-		if (newLocked.amount > 0) {
-			// Only if lock (from lock) hasn't been withdrawn/quitted
-			_checkpoint(addr, _locked, newLocked);
-		}
-	}
+	// // Delegates from/to lock and voting power
+	// function _delegate(
+	// 	address addr,
+	// 	LockedBalance memory _locked,
+	// 	int128 value,
+	// 	LockAction action
+	// ) internal {
+	// 	LockedBalance memory newLocked = _copyLock(_locked);
+	// 	if (action == LockAction.DELEGATE) {
+	// 		newLocked.delegated += value;
+	// 		emit Deposit(addr, uint256(int256(value)), newLocked.end, action, block.timestamp);
+	// 	} else {
+	// 		newLocked.delegated -= value;
+	// 		emit Withdraw(addr, uint256(int256(value)), action, block.timestamp);
+	// 	}
+	// 	locked[addr] = newLocked;
+	// 	if (newLocked.amount > 0) {
+	// 		// Only if lock (from lock) hasn't been withdrawn/quitted
+	// 		_checkpoint(addr, _locked, newLocked);
+	// 	}
+	// }
 
 	/// ~~~~~~~~~~~~~~~~~~~~~~~~~~ ///
 	///         QUIT LOCK          ///

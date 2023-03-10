@@ -4,6 +4,7 @@ pragma solidity ^0.8.16;
 import { IERC20, SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import { IMerkleDistributor } from "./interfaces/IMerkleDistributor.sol";
+import { IVotingEscrow } from "./interfaces/IVotingEscrow.sol";
 
 error AlreadyClaimed();
 error InvalidProof();
@@ -50,7 +51,7 @@ contract MerkleDistributor is IMerkleDistributor {
 
 		// Mark it claimed and send the token.
 		_setClaimed(index);
-		IERC20(token).safeTransfer(account, amount);
+		IVotingEscrow(token).lockTo(account, amount, duration);
 
 		emit Claimed(index, account, amount);
 	}
