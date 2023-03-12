@@ -34,14 +34,18 @@ contract lveSECT is ERC20, Ownable {
 	function convertToLock(uint256 amount) public {
 		if (address(veSECT) == address(0)) revert veSECTNotSet();
 		_burn(msg.sender, amount);
-		uint duration = block.timestamp + duration;
-		veSECT.lockFor(msg.sender, amount, duration);
-		emit ConvertToLock(msg.sender, amount, duration);
+		uint expiry = block.timestamp + duration;
+		veSECT.lockFor(msg.sender, amount, expiry);
+		emit ConvertToLock(msg.sender, amount, expiry);
 	}
 
 	/// @dev sender must have an existing veSECT balance
+	/// and a lock with a longer duration than the new lock time
 	function addValueToLock(uint256 amount) public {
 		_burn(msg.sender, amount);
+		uint expiry = block.timestamp + duration;
+		uint lockEnd = veSECT.lockEnd(msg.sender);
+		if (expiry > lockEnd) revert LockDurationTooShort();
 		veSECT.increaseAmountFor(msg.sender, amount);
 		emit AddValueToLock(msg.sender, amount);
 	}
@@ -51,4 +55,5 @@ contract lveSECT is ERC20, Ownable {
 	event SetVeToken(address indexed veToken);
 
 	error veSECTNotSet();
+	error LockDurationTooShort();
 }

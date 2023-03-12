@@ -2,6 +2,7 @@
 pragma solidity ^0.8.16;
 
 import { Setup } from "./Setup.sol";
+import { lveSECT } from "../lveSECT.sol";
 
 import "hardhat/console.sol";
 
@@ -87,6 +88,20 @@ contract lveSectTest is Setup {
 		lveSect.addValueToLock(amnt);
 
 		assertApproxEqRel(veSect.balanceOf(user1), voteWeight * 2, .0001e18);
+	}
+
+	function testIncreaseLockAmntFail() public {
+		uint amnt = 10e18;
+
+		lveSect.setVeToken(address(veSect));
+		mintLveSectTo(user1, amnt);
+
+		lockSect(user1, amnt, 10 days);
+		uint voteWeight = veSect.balanceOf(user1);
+
+		vm.prank(user1);
+		vm.expectRevert(lveSECT.LockDurationTooShort.selector);
+		lveSect.addValueToLock(amnt);
 	}
 
 	function lockSect(address user, uint amnt, uint duration) public {

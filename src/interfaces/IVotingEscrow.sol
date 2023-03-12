@@ -70,4 +70,9 @@ interface IVotingEscrow {
 	/// @param _addr user to which voting power is delegated
 	/// @dev Only callable by the blocklist contract
 	function forceUndelegate(address _addr) external;
+
+	/// @notice Returns a lock's expiration
+	/// @param _addr The address of the lock owner
+	/// @return Expiration of the lock
+	function lockEnd(address _addr) external view returns (uint256);
 }
