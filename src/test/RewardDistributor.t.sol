@@ -48,4 +48,12 @@ contract RewardDistributorTest is Setup {
 		assertEq(bSectBal, amnt / 2);
 		assertEq(lveSectBal, amnt / 2);
 	}
+
+	function testZeroRootShouldFail() public {
+		TreeLeaf memory params = getParams(user1);
+		uint amnt = vm.parseUint(params.amount);
+		sect.allocate(address(distributor), amnt);
+		vm.expectRevert("MerkleDistributor: Invalid proof.");
+		distributor.claim(params.index, user1, amnt, params.proof);
+	}
 }
