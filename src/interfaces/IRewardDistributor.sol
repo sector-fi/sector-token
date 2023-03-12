@@ -2,19 +2,9 @@
 pragma solidity >=0.5.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { IbSect, IveSect } from "./ITokens.sol";
 
-struct DistributionData {
-	address account;
-	uint8 campaignId;
-	uint256 amount;
-}
-
-struct ClaimedData {
-	address account;
-	uint256 amount;
-}
-
-interface IAirdropDistributorEvents {
+interface IRewardDistributorEvents {
 	/// @dev Emits when a user claims tokens
 	event Claimed(address indexed account, uint256 amount, bool indexed historic);
 
@@ -25,9 +15,15 @@ interface IAirdropDistributorEvents {
 	event TokenAllocated(address indexed account, uint8 indexed campaignId, uint256 amount);
 }
 
-interface IAirdropDistributor is IAirdropDistributorEvents {
+interface IRewardDistributor is IRewardDistributorEvents {
 	/// @dev Returns the token distributed by this contract.
 	function token() external view returns (IERC20);
+
+	/// @dev Returns the bToken distributed by this contract.
+	function bToken() external view returns (IbSect);
+
+	/// @dev Returns the lveToken distributed by this contract.
+	function lveToken() external view returns (IveSect);
 
 	/// @dev Returns the current merkle root containing total claimable balances
 	function merkleRoot() external view returns (bytes32);

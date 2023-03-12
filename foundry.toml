@@ -8,4 +8,4 @@ solc-version = "0.8.16"
 # path_pattern_inverse = "src/test/strategy/*"
 
 # gas_reports = ["IMX", "IMXVault", "IMXLend", "MockScyVault"]
-fs_permissions = [{ access = "read", path = "./ts/config/"}]
+fs_permissions = [{ access = "read", path = "./scripts/"}]

@@ -7,7 +7,7 @@ interface IVotingEscrow {
 	/// @param _unlockTime Time at which the lock expires
 	function createLock(uint256 _value, uint256 _unlockTime) external;
 
-	/// @notice Lock tokens into the voting escrow
+	/// @notice Lock tokens into the voting escrow for an account
 	/// @param account_ Address of account to lock tokens for
 	/// @param value_ Amount of tokens to lock
 	/// @param unlockTime_ Unix timestamp when tokens will unlock
