@@ -16,7 +16,7 @@ contract Setup is SectorTest {
 	bSECT bSect;
 	VotingEscrow veSect;
 	RewardDistributor distributor;
-	IERC20 underlying;
+	MockERC20 underlying;
 
 	function setupTests() public {
 		sect = new SECT();

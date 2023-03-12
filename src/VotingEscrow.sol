@@ -1,24 +1,33 @@
-// SPDX-License-Identifier: AGPL-3.0
-pragma solidity ^0.8.16;
+// SPDX-License-Identifier: AGPL-3.0-or-later
+pragma solidity ^0.8.3;
 
 import { ReentrancyGuard } from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import { IERC20Metadata as IERC20 } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import { IVotingEscrow } from "./interfaces/IVotingEscrow.sol";
 import { IBlocklist } from "./interfaces/IBlocklist.sol";
 
-/// @title  VotingEscrow
-/// @author Curve Finance (MIT) - original concept and implementation in Vyper
-///           (see https://github.com/curvefi/curve-dao-contracts/blob/master/contracts/VotingEscrow.vy)
-///         mStable (AGPL) - forking Curve's Vyper contract and porting to Solidity
-///           (see https://github.com/mstable/mStable-contracts/blob/master/contracts/governance/IncentivisedVotingLockup.sol)
-///         FIAT DAO (AGPL) - this version
-/// @notice Plain Curve VotingEscrow mechanics with following adjustments:
-///            1) Delegation of lock and voting power
-///            2) Quit an existing lock and pay a penalty
-///            3) Whitelisting of SmartWallets outside the VotingEscrow
-///            4) Reduced pointHistory array size and, as a result, lifetime of the contract
-///            5) Removed public deposit_for and Aragon compatibility (no use case)
+/// @title  Delegated Voting Escrow
+/// @notice An ERC20 token that allocates users a virtual balance depending
+/// on the amount of tokens locked and their remaining lock duration. The
+/// virtual balance decreases linearly with the remaining lock duration.
+/// This is the locking mechanism known from veCRV with additional features:
+/// - Delegation of lock and voting power
+/// - Quit an existing lock and pay a penalty
+/// - Optimistic approval of SmartWallets through Blocklist
+/// - Reduced pointHistory array size and, as a result, lifetime of the contract
+/// - Removed public deposit_for and Aragon compatibility (no use case)
+/// @dev Builds on Curve Finance's original VotingEscrow implementation
+/// (see https://github.com/curvefi/curve-dao-contracts/blob/master/contracts/VotingEscrow.vy)
+/// and mStable's Solidity translation thereof
+/// (see https://github.com/mstable/mStable-contracts/blob/master/contracts/governance/IncentivisedVotingLockup.sol)
+/// Usage of this contract is not safe with all tokens, specifically:
+/// - Contract does not support tokens with maxSupply>2^128-10^[decimals]
+/// - Contract does not support fee-on-transfer tokens
+/// - Contract may be unsafe for tokens with decimals<6
 contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
+	using SafeERC20 for IERC20;
 	// Shared Events
 	event Deposit(
 		address indexed provider,
@@ -28,22 +37,23 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 		uint256 ts
 	);
 	event Withdraw(address indexed provider, uint256 value, LockAction indexed action, uint256 ts);
-	event TransferOwnership(address owner);
-	event UpdateBlocklist(address blocklist);
-	event UpdatePenaltyRecipient(address recipient);
-	event CollectPenalty(uint256 amount, address recipient);
+	event TransferOwnership(address indexed owner);
+	event UpdateBlocklist(address indexed blocklist);
+	event UpdatePenaltyRecipient(address indexed recipient);
+	event CollectPenalty(uint256 amount, address indexed recipient);
 	event Unlock();
 
 	// Shared global state
-	IERC20 public token;
+	IERC20 public immutable token;
 	uint256 public constant WEEK = 7 days;
-	uint256 public constant MAXTIME = 365 days;
-	uint256 public constant MULTIPLIER = 10 ** 18;
+	uint256 public constant MAXTIME = 730 days;
+	uint256 public constant MULTIPLIER = 1e18;
 	address public owner;
 	address public penaltyRecipient; // receives collected penalty payments
-	uint256 public maxPenalty = 10 ** 18; // penalty for quitters with MAXTIME remaining lock
+	uint256 public maxPenalty = 1e18; // penalty for quitters with MAXTIME remaining lock
 	uint256 public penaltyAccumulated; // accumulated and unwithdrawn penalty payments
 	address public blocklist;
+	uint256 public supply;
 
 	// Lock state
 	uint256 public globalEpoch;
@@ -56,7 +66,7 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	// Voting token
 	string public name;
 	string public symbol;
-	uint256 public decimals = 18;
+	uint256 public decimals;
 
 	// Structs
 	struct Point {
@@ -67,8 +77,8 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	}
 	struct LockedBalance {
 		int128 amount;
-		uint256 end;
 		int128 delegated;
+		uint96 end;
 		address delegatee;
 	}
 
@@ -85,7 +95,7 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	}
 
 	/// @notice Initializes state
-	/// @param _owner The owner is able to update `owner`, `penaltyRecipient` and `penaltyRate`
+	/// @param _owner Is assumed to be a timelock contract
 	/// @param _penaltyRecipient The recipient of penalty paid by lock quitters
 	/// @param _token The token locked in order to obtain voting power
 	/// @param _name The name of the voting token
@@ -105,7 +115,7 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 			blk: block.number
 		});
 
-		decimals = IERC20(_token).decimals();
+		decimals = IERC20Metadata(_token).decimals();
 		require(decimals <= 18, "Exceeds max decimals");
 
 		name = _name;
@@ -115,7 +125,13 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	}
 
 	modifier checkBlocklist() {
-		require(!IBlocklist(blocklist).isBlocked(msg.sender), "Blocked contract");
+		if (blocklist != address(0))
+			require(!IBlocklist(blocklist).isBlocked(msg.sender), "Blocked contract");
+		_;
+	}
+
+	modifier onlyOwner() {
+		require(msg.sender == owner, "Only owner");
 		_;
 	}
 
@@ -125,38 +141,35 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 
 	/// @notice Transfers ownership to a new owner
 	/// @param _addr The new owner
-	/// @dev Owner should always be a timelock contract
-	function transferOwnership(address _addr) external {
-		require(msg.sender == owner, "Only owner");
+	/// @dev Owner is assumed to be a timelock contract
+	function transferOwnership(address _addr) external onlyOwner {
 		owner = _addr;
 		emit TransferOwnership(_addr);
 	}
 
 	/// @notice Updates the blocklist contract
-	function updateBlocklist(address _addr) external {
-		require(msg.sender == owner, "Only owner");
+	function updateBlocklist(address _addr) external onlyOwner {
 		blocklist = _addr;
 		emit UpdateBlocklist(_addr);
 	}
 
 	/// @notice Updates the recipient of the accumulated penalty paid by quitters
-	function updatePenaltyRecipient(address _addr) external {
-		require(msg.sender == owner, "Only owner");
+	function updatePenaltyRecipient(address _addr) external onlyOwner {
 		penaltyRecipient = _addr;
 		emit UpdatePenaltyRecipient(_addr);
 	}
 
 	/// @notice Removes quitlock penalty by setting it to zero
-	/// @dev This is an irreversible action
-	function unlock() external {
-		require(msg.sender == owner, "Only owner");
+	/// @dev This is an irreversible action and is assumed to be used in
+	/// a migration to a new VotingEscrow contract only
+	function unlock() external onlyOwner {
 		maxPenalty = 0;
 		emit Unlock();
 	}
 
-	/// @notice Forces an undelegation of virtual balance for a blocked locker
-	/// @dev Can only be called by the Blocklist contract (as part of a block)
-	/// @dev This is an irreversible action
+	/// @notice Remove delegation for blocked contract
+	/// @param _addr user to which voting power is delegated
+	/// @dev Only callable by the blocklist contract
 	function forceUndelegate(address _addr) external override {
 		require(msg.sender == blocklist, "Only Blocklist");
 		LockedBalance memory locked_ = locked[_addr];
@@ -167,6 +180,7 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 			LockedBalance memory fromLocked;
 			locked_.delegatee = _addr;
 			fromLocked = locked[delegatee];
+			locked_.end = fromLocked.end;
 			_delegate(delegatee, fromLocked, value, LockAction.UNDELEGATE);
 			_delegate(_addr, locked_, value, LockAction.DELEGATE);
 		}
@@ -176,18 +190,18 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	///       LOCK MANAGEMENT       ///
 	/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~ ///
 
-	/// @notice Returns a user's lock expiration
-	/// @param _addr The address of the user
-	/// @return Expiration of the user's lock
+	/// @notice Returns a lock's expiration
+	/// @param _addr The address of the lock owner
+	/// @return Expiration of the lock
 	function lockEnd(address _addr) external view returns (uint256) {
 		return locked[_addr].end;
 	}
 
-	/// @notice Returns the last available user point for a user
-	/// @param _addr User address
-	/// @return bias i.e. y
-	/// @return slope i.e. linear gradient
-	/// @return ts i.e. time point was logged
+	/// @notice Returns a lock's last available user point
+	/// @param _addr The address of the lock owner
+	/// @return bias The last recorded virtual balance
+	/// @return slope The last recorded linear decay
+	/// @return ts The last recorded timestamp
 	function getLastUserPoint(
 		address _addr
 	) external view returns (int128 bias, int128 slope, uint256 ts) {
@@ -200,9 +214,9 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	}
 
 	/// @notice Records a checkpoint of both individual and global slope
-	/// @param _addr User address, or address(0) for only global
+	/// @param _addr The address of the lock owner, or address(0) for only global
 	/// @param _oldLocked Old amount that user had locked, or null for global
-	/// @param _newLocked new amount that user has locked, or null for global
+	/// @param _newLocked New amount that user has locked, or null for global
 	function _checkpoint(
 		address _addr,
 		LockedBalance memory _oldLocked,
@@ -217,6 +231,9 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 		if (_addr != address(0)) {
 			// Calculate slopes and biases
 			// Kept at zero when they have to
+			// Casting in the next blocks is safe given that MAXTIME is a small
+			// positive number and we check for _oldLocked.end>block.timestamp
+			// and _newLocked.end>block.timestamp
 			if (_oldLocked.end > block.timestamp && _oldLocked.delegated > 0) {
 				userOldPoint.slope = _oldLocked.delegated / int128(int256(MAXTIME));
 				userOldPoint.bias =
@@ -234,9 +251,6 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 			// start {
 			// Now handle user history
 			uint256 uEpoch = userPointEpoch[_addr];
-			if (uEpoch == 0) {
-				userPointHistory[_addr][uEpoch + 1] = userOldPoint;
-			}
 
 			userPointEpoch[_addr] = uEpoch + 1;
 			userNewPoint.ts = block.timestamp;
@@ -289,7 +303,7 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 
 		// Go over weeks to fill history and calculate what the current point is
 		uint256 iterativeTime = _floorToWeek(lastCheckpoint);
-		for (uint256 i = 0; i < 255; i++) {
+		for (uint256 i; i < 255; ) {
 			// Hopefully it won't happen that this won't get used in 5 years!
 			// If it does, users will be able to withdraw but vote weight will be broken
 			iterativeTime = iterativeTime + WEEK;
@@ -324,6 +338,9 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 				break;
 			} else {
 				pointHistory[epoch] = lastPoint;
+			}
+			unchecked {
+				++i;
 			}
 		}
 
@@ -368,125 +385,171 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 		}
 	}
 
-	/// @notice Public function to trigger global checkpoint
+	/// @notice Records a new global checkpoint
 	function checkpoint() external {
 		LockedBalance memory empty;
 		_checkpoint(address(0), empty, empty);
 	}
 
-	// See IVotingEscrow for documentation
 	function createLock(
 		uint256 _value,
 		uint256 _unlockTime
 	) external override nonReentrant checkBlocklist {
-		_lockTo(msg.sender, _value, _unlockTime);
+		_lockFor(msg.sender, _value, _unlockTime);
 	}
 
-	function lockTo(
+	function lockFor(
 		address account_,
 		uint256 value_,
 		uint256 unlockTime_
 	) external override nonReentrant checkBlocklist {
-		_lockTo(account_, value_, unlockTime_);
+		_lockFor(account_, value_, unlockTime_);
 	}
 
-	// Lock `_value` tokens for `_unlockTime` duration and updates the user's locked and delegated balances accordingly
-	function _lockTo(address account_, uint256 value_, uint256 unlockTime_) internal {
-		uint256 unlock_time = _floorToWeek(unlockTime_); // Locktime is rounded down to weeks
-		LockedBalance memory locked_ = locked[account_];
+	/// @notice Creates a new lock
+	/// @param _value Amount of token to lock
+	/// @param _unlockTime Expiration time of the lock
+	/// @dev `_value` is (unsafely) downcasted from `uint256` to `int128`
+	/// and `_unlockTime` is (unsafely) downcasted from `uint256` to `uint96`
+	/// assuming that the values never reach the respective max values
+	function _lockFor(address account, uint256 _value, uint256 _unlockTime) internal {
+		uint256 unlock_time = _floorToWeek(_unlockTime); // Locktime is rounded down to weeks
+		LockedBalance memory locked_ = locked[account];
+		LockedBalance memory oldLock = _copyLock(locked_);
 		// Validate inputs
-		require(value_ > 0, "Only non zero amount");
-		require(locked_.amount == 0, "Lock exists");
+		require(_value != 0, "Only non zero amount");
+		// require(locked_.amount == 0, "Lock exists");
+		require(locked_.delegatee == account || locked_.amount == 0, "Delegated lock");
 		require(unlock_time >= locked_.end, "Only increase lock end"); // from using quitLock, user should increaseAmount instead
 		require(unlock_time > block.timestamp, "Only future lock end");
 		require(unlock_time <= block.timestamp + MAXTIME, "Exceeds maxtime");
+		// Update total supply of token deposited
+		supply = supply + _value;
 		// Update lock and voting power (checkpoint)
-		locked_.amount += int128(int256(value_));
-		locked_.end = unlock_time;
-		locked_.delegated += int128(int256(value_));
-		locked_.delegatee = account_;
-		locked[account_] = locked_;
-		_checkpoint(account_, LockedBalance(0, 0, 0, address(0)), locked_);
+		// Casting in the next block is safe given that we check for _value>0 and the
+		// totalSupply of tokens is generally significantly lower than the int128.max
+		// value (considering the max precision of 18 decimals enforced in the constructor)
+		locked_.amount = locked_.amount + int128(int256(_value));
+		locked_.end = uint96(unlock_time);
+		locked_.delegated = locked_.delegated + int128(int256(_value));
+		locked_.delegatee = account;
+		locked[account] = locked_;
+		_checkpoint(account, oldLock, locked_);
 		// Deposit locked tokens
-		require(token.transferFrom(msg.sender, address(this), value_), "Transfer failed");
-		emit Deposit(account_, value_, unlock_time, LockAction.CREATE, block.timestamp);
+		token.safeTransferFrom(msg.sender, address(this), _value);
+		emit Deposit(account, _value, unlock_time, LockAction.CREATE, block.timestamp);
 	}
 
-	// See IVotingEscrow for documentation
-	// @dev A lock is active until both lock.amount==0 and lock.end<=block.timestamp
+	/// @notice Locks more tokens on behalf of an account
+	/// @param account Account to lock tokens for
+	/// @param _value Amount of tokens to add to the lock
+	/// @dev Does not update the lock's expiration
+	/// Does record a new checkpoint for the lock
+	/// `_value` is (unsafely) downcasted from `uint256` to `int128` assuming
+	/// that the max value is never reached in practice
+	function increaseAmountFor(
+		address account,
+		uint256 _value
+	) external override nonReentrant checkBlocklist {
+		_increaseAmount(account, _value);
+	}
+
+	/// @notice Locks more tokens in an existing lock
+	/// @param _value Amount of tokens to add to the lock
+	/// @dev Does not update the lock's expiration
+	/// Does record a new checkpoint for the lock
+	/// `_value` is (unsafely) downcasted from `uint256` to `int128` assuming
+	/// that the max value is never reached in practice
 	function increaseAmount(uint256 _value) external override nonReentrant checkBlocklist {
-		LockedBalance memory locked_ = locked[msg.sender];
+		_increaseAmount(msg.sender, _value);
+	}
+
+	function _increaseAmount(address account, uint256 _value) internal {
+		LockedBalance memory locked_ = locked[account];
 		// Validate inputs
-		require(_value > 0, "Only non zero amount");
+		require(_value != 0, "Only non zero amount");
 		require(locked_.amount > 0, "No lock");
 		require(locked_.end > block.timestamp, "Lock expired");
+		// Update total supply of token deposited
+		supply = supply + _value;
 		// Update lock
 		address delegatee = locked_.delegatee;
 		uint256 unlockTime = locked_.end;
 		LockAction action = LockAction.INCREASE_AMOUNT;
 		LockedBalance memory newLocked;
-		if (delegatee == msg.sender) {
+		// Casting in the next block is safe given that we check for _value>0 and the
+		// totalSupply of tokens is generally significantly lower than the int128.max
+		// value (considering the max precision of 18 decimals enforced in the constructor)
+		if (delegatee == account) {
 			// Undelegated lock
 			action = LockAction.INCREASE_AMOUNT_AND_DELEGATION;
 			newLocked = _copyLock(locked_);
-			newLocked.amount += int128(int256(_value));
-			newLocked.delegated += int128(int256(_value));
-			locked[msg.sender] = newLocked;
+			newLocked.amount = newLocked.amount + int128(int256(_value));
+			newLocked.delegated = newLocked.delegated + int128(int256(_value));
+			locked[account] = newLocked;
 		} else {
 			// Delegated lock, update sender's lock first
-			locked_.amount += int128(int256(_value));
-			locked[msg.sender] = locked_;
+			locked_.amount = locked_.amount + int128(int256(_value));
+			locked[account] = locked_;
 			// Then, update delegatee's lock and voting power (checkpoint)
 			locked_ = locked[delegatee];
 			require(locked_.amount > 0, "Delegatee has no lock");
 			require(locked_.end > block.timestamp, "Delegatee lock expired");
 			newLocked = _copyLock(locked_);
-			newLocked.delegated += int128(int256(_value));
+			newLocked.delegated = newLocked.delegated + int128(int256(_value));
 			locked[delegatee] = newLocked;
 			emit Deposit(delegatee, _value, newLocked.end, LockAction.DELEGATE, block.timestamp);
 		}
 		// Checkpoint only for delegatee
 		_checkpoint(delegatee, locked_, newLocked);
 		// Deposit locked tokens
-		require(token.transferFrom(msg.sender, address(this), _value), "Transfer failed");
-		emit Deposit(msg.sender, _value, unlockTime, action, block.timestamp);
+		token.safeTransferFrom(msg.sender, address(this), _value);
+		emit Deposit(account, _value, unlockTime, action, block.timestamp);
 	}
 
-	// See IVotingEscrow for documentation
+	/// @notice Extends the expiration of an existing lock
+	/// @param _unlockTime New lock expiration time
+	/// @dev Does not update the amount of tokens locked
+	/// Does record a new checkpoint for the lock
+	/// `_unlockTime` is (unsafely) downcasted from `uint256` to `uint96`
+	/// assuming that the max value is never reached in practice
 	function increaseUnlockTime(uint256 _unlockTime) external override nonReentrant checkBlocklist {
 		LockedBalance memory locked_ = locked[msg.sender];
 		uint256 unlock_time = _floorToWeek(_unlockTime); // Locktime is rounded down to weeks
 		// Validate inputs
 		require(locked_.amount > 0, "No lock");
+		require(locked_.end > block.timestamp, "Lock expired");
 		require(unlock_time > locked_.end, "Only increase lock end");
 		require(unlock_time <= block.timestamp + MAXTIME, "Exceeds maxtime");
 		// Update lock
 		uint256 oldUnlockTime = locked_.end;
-		locked_.end = unlock_time;
+		locked_.end = uint96(unlock_time);
 		locked[msg.sender] = locked_;
-		if (locked_.delegatee == msg.sender) {
-			// Undelegated lock
-			require(oldUnlockTime > block.timestamp, "Lock expired");
+		if (locked_.delegated > 0) {
+			// Lock with non-zero virtual balance
 			LockedBalance memory oldLocked = _copyLock(locked_);
-			oldLocked.end = unlock_time;
+			oldLocked.end = uint96(oldUnlockTime);
 			_checkpoint(msg.sender, oldLocked, locked_);
 		}
 		emit Deposit(msg.sender, 0, unlock_time, LockAction.INCREASE_TIME, block.timestamp);
 	}
 
-	// See IVotingEscrow for documentation
+	/// @notice Withdraws the tokens of an expired lock
+	/// Delegated locks need to be undelegated first
 	function withdraw() external override nonReentrant {
 		LockedBalance memory locked_ = locked[msg.sender];
 		// Validate inputs
 		require(locked_.amount > 0, "No lock");
 		require(locked_.end <= block.timestamp, "Lock not expired");
 		require(locked_.delegatee == msg.sender, "Lock delegated");
-		// Update lock
+		// Update total supply of token deposited
 		uint256 value = uint256(uint128(locked_.amount));
+		supply = supply - value;
+		// Update lock
 		LockedBalance memory newLocked = _copyLock(locked_);
 		newLocked.amount = 0;
 		newLocked.end = 0;
-		newLocked.delegated -= int128(int256(value));
+		newLocked.delegated = newLocked.delegated - locked_.amount;
 		newLocked.delegatee = address(0);
 		locked[msg.sender] = newLocked;
 		newLocked.delegated = 0;
@@ -495,7 +558,7 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 		// Both can have >= 0 amount
 		_checkpoint(msg.sender, locked_, newLocked);
 		// Send back deposited tokens
-		require(token.transfer(msg.sender, value), "Transfer failed");
+		token.safeTransfer(msg.sender, value);
 		emit Withdraw(msg.sender, value, LockAction.WITHDRAW, block.timestamp);
 	}
 
@@ -503,39 +566,56 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	///         DELEGATION         ///
 	/// ~~~~~~~~~~~~~~~~~~~~~~~~~~ ///
 
-	// See IVotingEscrow for documentation
+	/// @notice Delegate lock and voting power to another lock
+	/// The receiving lock needs to have a longer lock duration
+	/// The delegated lock will inherit the receiving lock's expiration
+	/// @param _addr The address of the lock owner to which to delegate
 	function delegate(address _addr) external override nonReentrant checkBlocklist {
+		// Different restrictions apply to undelegation
+		if (_addr == msg.sender) {
+			_undelegate();
+			return;
+		}
 		LockedBalance memory locked_ = locked[msg.sender];
 		// Validate inputs
 		require(!IBlocklist(blocklist).isBlocked(_addr), "Blocked contract");
 		require(locked_.amount > 0, "No lock");
+		require(locked_.end > block.timestamp, "Lock expired");
 		require(locked_.delegatee != _addr, "Already delegated");
 		// Update locks
 		int128 value = locked_.amount;
 		address delegatee = locked_.delegatee;
-		LockedBalance memory fromLocked;
-		LockedBalance memory toLocked;
+		LockedBalance memory toLocked = locked[_addr];
 		locked_.delegatee = _addr;
-		if (delegatee == msg.sender) {
-			// Delegate
-			fromLocked = locked_;
-			toLocked = locked[_addr];
-		} else if (_addr == msg.sender) {
-			// Undelegate
-			fromLocked = locked[delegatee];
-			toLocked = locked_;
-		} else {
-			// Re-delegate
-			fromLocked = locked[delegatee];
-			toLocked = locked[_addr];
-			// Update owner lock if not involved in delegation
+		if (delegatee != msg.sender) {
 			locked[msg.sender] = locked_;
+			locked_ = locked[delegatee];
 		}
 		require(toLocked.amount > 0, "Delegatee has no lock");
 		require(toLocked.end > block.timestamp, "Delegatee lock expired");
-		require(toLocked.end >= fromLocked.end, "Only delegate to longer lock");
-		_delegate(delegatee, fromLocked, value, LockAction.UNDELEGATE);
+		require(toLocked.end >= locked_.end, "Only delegate to longer lock");
+		_delegate(delegatee, locked_, value, LockAction.UNDELEGATE);
 		_delegate(_addr, toLocked, value, LockAction.DELEGATE);
+	}
+
+	// Undelegates sender's lock
+	// Can be executed on expired locks too
+	// Owner inherits delegatee's unlockTime if it exceeds owner's
+	function _undelegate() internal {
+		LockedBalance memory locked_ = locked[msg.sender];
+		// Validate inputs
+		require(locked_.amount > 0, "No lock");
+		require(locked_.delegatee != msg.sender, "Already undelegated");
+		// Update locks
+		int128 value = locked_.amount;
+		address delegatee = locked_.delegatee;
+		LockedBalance memory fromLocked = locked[delegatee];
+		locked_.delegatee = msg.sender;
+		if (locked_.end < fromLocked.end) {
+			locked_.end = fromLocked.end;
+		}
+		_delegate(delegatee, fromLocked, value, LockAction.UNDELEGATE);
+		_delegate(msg.sender, locked_, value, LockAction.DELEGATE);
 	}
 
 	// Delegates from/to lock and voting power
@@ -547,10 +627,10 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	) internal {
 		LockedBalance memory newLocked = _copyLock(_locked);
 		if (action == LockAction.DELEGATE) {
-			newLocked.delegated += value;
+			newLocked.delegated = newLocked.delegated + value;
 			emit Deposit(addr, uint256(int256(value)), newLocked.end, action, block.timestamp);
 		} else {
-			newLocked.delegated -= value;
+			newLocked.delegated = newLocked.delegated - value;
 			emit Withdraw(addr, uint256(int256(value)), action, block.timestamp);
 		}
 		locked[addr] = newLocked;
@@ -564,18 +644,22 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	///         QUIT LOCK          ///
 	/// ~~~~~~~~~~~~~~~~~~~~~~~~~~ ///
 
-	// See IVotingEscrow for documentation
+	/// @notice Quit an existing lock by withdrawing all tokens less a penalty
+	/// Use `withdraw` for expired locks
+	/// @dev Quitters lock expiration remains in place because it might be delegated to
 	function quitLock() external override nonReentrant {
 		LockedBalance memory locked_ = locked[msg.sender];
 		// Validate inputs
 		require(locked_.amount > 0, "No lock");
 		require(locked_.end > block.timestamp, "Lock expired");
 		require(locked_.delegatee == msg.sender, "Lock delegated");
-		// Update lock
+		// Update total supply of token deposited
 		uint256 value = uint256(uint128(locked_.amount));
+		supply = supply - value;
+		// Update lock
 		LockedBalance memory newLocked = _copyLock(locked_);
 		newLocked.amount = 0;
-		newLocked.delegated -= int128(int256(value));
+		newLocked.delegated = newLocked.delegated - locked_.amount;
 		newLocked.delegatee = address(0);
 		locked[msg.sender] = newLocked;
 		newLocked.end = 0;
@@ -586,27 +670,39 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 		_checkpoint(msg.sender, locked_, newLocked);
 		// apply penalty
 		uint256 penaltyRate = _calculatePenaltyRate(locked_.end);
-		uint256 penaltyAmount = (value * penaltyRate) / 10 ** 18; // quitlock_penalty is in 18 decimals precision
-		penaltyAccumulated += penaltyAmount;
+		uint256 penaltyAmount = (value * penaltyRate) / 1e18; // quitlock_penalty is in 18 decimals precision
+		penaltyAccumulated = penaltyAccumulated + penaltyAmount;
 		uint256 remainingAmount = value - penaltyAmount;
 		// Send back remaining tokens
-		require(token.transfer(msg.sender, remainingAmount), "Transfer failed");
+		token.safeTransfer(msg.sender, remainingAmount);
 		emit Withdraw(msg.sender, value, LockAction.QUIT, block.timestamp);
 	}
 
-	// Calculate penalty rate (decreasing linearly)
+	/// @notice Returns the penalty rate for a given lock expiration
+	/// @param end The lock's expiration
+	/// @return The penalty rate applicable to the lock
+	/// @dev The penalty rate decreases linearly at the same rate as a lock's voting power
+	/// in order to compensate for votes unlocked without committing to the lock expiration
+	function getPenaltyRate(uint256 end) external view returns (uint256) {
+		return _calculatePenaltyRate(end);
+	}
+
+	// Calculate penalty rate
+	// Penalty rate decreases linearly at the same rate as a lock's voting power
+	// in order to compensate for votes used
 	function _calculatePenaltyRate(uint256 end) internal view returns (uint256) {
 		// We know that end > block.timestamp because expired locks cannot be quitted
 		return ((end - block.timestamp) * maxPenalty) / MAXTIME;
 	}
 
-	/// @notice Collect accumulated penalty from quitters
-	/// @dev Everyone can collect but penalty is sent to `penaltyRecipient`
+	/// @notice Collect accumulated penalty from lock quitters
+	/// Everyone can collect but penalty is sent to `penaltyRecipient`
 	function collectPenalty() external {
 		uint256 amount = penaltyAccumulated;
 		penaltyAccumulated = 0;
-		require(token.transfer(penaltyRecipient, amount), "Transfer failed");
-		emit CollectPenalty(amount, penaltyRecipient);
+		address recipient = penaltyRecipient;
+		token.safeTransfer(recipient, amount);
+		emit CollectPenalty(amount, recipient);
 	}
 
 	/// ~~~~~~~~~~~~~~~~~~~~~~~~~~ ///
@@ -624,21 +720,20 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 			});
 	}
 
-	// @dev Floors a timestamp to the nearest weekly increment
-	// @param _t Timestamp to floor
+	// Floors a timestamp to the nearest weekly increment
 	function _floorToWeek(uint256 _t) internal pure returns (uint256) {
 		return (_t / WEEK) * WEEK;
 	}
 
-	// @dev Uses binarysearch to find the most recent point history preceeding block
-	// @param _block Find the most recent point history before this block
-	// @param _maxEpoch Do not search pointHistories past this index
+	// Uses binarysearch to find the most recent point history preceeding block
+	// Find the most recent point history before _block
+	// Do not search pointHistories past _maxEpoch
 	function _findBlockEpoch(uint256 _block, uint256 _maxEpoch) internal view returns (uint256) {
 		// Binary search
 		uint256 min = 0;
 		uint256 max = _maxEpoch;
 		// Will be always enough for 128-bit numbers
-		for (uint256 i = 0; i < 128; i++) {
+		for (uint256 i; i < 128; ) {
 			if (min >= max) break;
 			uint256 mid = (min + max + 1) / 2;
 			if (pointHistory[mid].blk <= _block) {
@@ -646,17 +741,20 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 			} else {
 				max = mid - 1;
 			}
+			unchecked {
+				++i;
+			}
 		}
 		return min;
 	}
 
-	// @dev Uses binarysearch to find the most recent user point history preceeding block
-	// @param _addr User for which to search
-	// @param _block Find the most recent point history before this block
+	// Uses binarysearch to find the most recent user point history preceeding block
+	// _addr is the lock owner for which to search
+	// Find the most recent point history before _block
 	function _findUserBlockEpoch(address _addr, uint256 _block) internal view returns (uint256) {
 		uint256 min = 0;
 		uint256 max = userPointEpoch[_addr];
-		for (uint256 i = 0; i < 128; i++) {
+		for (uint256 i; i < 128; ) {
 			if (min >= max) {
 				break;
 			}
@@ -666,16 +764,23 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 			} else {
 				max = mid - 1;
 			}
+			unchecked {
+				++i;
+			}
 		}
 		return min;
 	}
 
-	// See IVotingEscrow for documentation
+	/// @notice Get a lock's current voting power
+	/// @param _owner The address of the lock owner for which to return voting power
+	/// @return Voting power of the lock
 	function balanceOf(address _owner) public view override returns (uint256) {
 		uint256 epoch = userPointEpoch[_owner];
 		if (epoch == 0) {
 			return 0;
 		}
+		// Casting is safe given that checkpoints are recorded in the past
+		// and are more frequent than every int128.max seconds
 		Point memory lastPoint = userPointHistory[_owner][epoch];
 		lastPoint.bias =
 			lastPoint.bias -
@@ -686,7 +791,10 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 		return uint256(uint128(lastPoint.bias));
 	}
 
-	// See IVotingEscrow for documentation
+	/// @notice Get a lock's voting power at a given block number
+	/// @param _owner The address of the lock owner for which to return voting power
+	/// @param _blockNumber The block at which to calculate the lock's voting power
+	/// @return uint256 Voting power of the lock
 	function balanceOfAt(
 		address _owner,
 		uint256 _blockNumber
@@ -724,6 +832,8 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 			blockTime = blockTime + ((dTime * (_blockNumber - point0.blk)) / dBlock);
 		}
 		// Current Bias = most recent bias - (slope * time since update)
+		// Casting is safe given that checkpoints are recorded in the past
+		// and are more frequent than every int128.max seconds
 		upoint.bias = upoint.bias - (upoint.slope * int128(int256(blockTime - upoint.ts)));
 		if (upoint.bias >= 0) {
 			return uint256(uint128(upoint.bias));
@@ -732,16 +842,15 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 		}
 	}
 
-	/// @notice Calculate total supply of voting power at a given time _t
-	/// @param _point Most recent point before time _t
-	/// @param _t Time at which to calculate supply
-	/// @return totalSupply at given point in time
+	// Calculate total supply of voting power at a given time _t
+	// _point is the most recent point before time _t
+	// _t is the time at which to calculate supply
 	function _supplyAt(Point memory _point, uint256 _t) internal view returns (uint256) {
 		Point memory lastPoint = _point;
 		// Floor the timestamp to weekly interval
 		uint256 iterativeTime = _floorToWeek(lastPoint.ts);
 		// Iterate through all weeks between _point & _t to account for slope changes
-		for (uint256 i = 0; i < 255; i++) {
+		for (uint256 i; i < 255; ) {
 			iterativeTime = iterativeTime + WEEK;
 			int128 dSlope = 0;
 			// If week end is after timestamp, then truncate & leave dSlope to 0
@@ -753,6 +862,8 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 				dSlope = slopeChanges[iterativeTime];
 			}
 
+			// Casting is safe given that lastPoint.ts < iterativeTime and
+			// iteration goes over 255 weeks max
 			lastPoint.bias =
 				lastPoint.bias -
 				(lastPoint.slope * int128(int256(iterativeTime - lastPoint.ts)));
@@ -761,6 +872,10 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 			}
 			lastPoint.slope = lastPoint.slope + dSlope;
 			lastPoint.ts = iterativeTime;
+
+			unchecked {
+				++i;
+			}
 		}
 
 		if (lastPoint.bias < 0) {
@@ -769,14 +884,17 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 		return uint256(uint128(lastPoint.bias));
 	}
 
-	// See IVotingEscrow for documentation
+	/// @notice Calculate current total supply of voting power
+	/// @return Current totalSupply
 	function totalSupply() public view override returns (uint256) {
 		uint256 epoch_ = globalEpoch;
 		Point memory lastPoint = pointHistory[epoch_];
 		return _supplyAt(lastPoint, block.timestamp);
 	}
 
-	// See IVotingEscrow for documentation
+	/// @notice Calculate total supply of voting power at a given block number
+	/// @param _blockNumber The block number at which to calculate total supply
+	/// @return totalSupply of voting power at the given block number
 	function totalSupplyAt(uint256 _blockNumber) public view override returns (uint256) {
 		require(_blockNumber <= block.number, "Only past block number");
 

@@ -7,6 +7,7 @@ import { TASK_COMPILE_SOLIDITY_GET_SOURCE_PATHS } from 'hardhat/builtin-tasks/ta
 import '@nomiclabs/hardhat-etherscan';
 import '@typechain/hardhat';
 import '@nomiclabs/hardhat-ethers';
+import '@nomiclabs/hardhat-waffle';
 
 Error.stackTraceLimit = Infinity;
 

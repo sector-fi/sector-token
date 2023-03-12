@@ -51,5 +51,4 @@ contract bSECT is ERC20, Ownable {
 	event Convert(address indexed user, uint256 amount);
 
 	error PriceNotSet();
-	error AmountTooSmall();
 }

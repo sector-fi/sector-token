@@ -11,13 +11,20 @@ interface IVotingEscrow {
 	/// @param account_ Address of account to lock tokens for
 	/// @param value_ Amount of tokens to lock
 	/// @param unlockTime_ Unix timestamp when tokens will unlock
-	function lockTo(address account_, uint256 value_, uint256 unlockTime_) external;
+	function lockFor(address account_, uint256 value_, uint256 unlockTime_) external;
 
 	/// @notice Locks more tokens in an existing lock
 	/// @param _value Additional units of `token` to add to the lock
 	/// @dev Does not update the lock's expiration.
 	/// @dev Does increase the user's voting power, or the delegatee's voting power.
 	function increaseAmount(uint256 _value) external;
+
+	/// @notice Locks more tokens in an existing lock
+	/// @param account Address of account to lock tokens for
+	/// @param _value Additional units of `token` to add to the lock
+	/// @dev Does not update the lock's expiration.
+	/// @dev Does increase the user's voting power, or the delegatee's voting power.
+	function increaseAmountFor(address account, uint256 _value) external;
 
 	/// @notice Extends the expiration of an existing lock
 	/// @param _unlockTime New lock expiration time
