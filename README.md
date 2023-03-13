@@ -22,10 +22,10 @@ foundry tests:
 yarn test
 ```
 
-hardhat integrations tests:
+hardhat VotingEscrow.sol tests:
 
 ```
-yarn test:hardhat
+npx hardhat test
 ```
 
 ## Coverage
