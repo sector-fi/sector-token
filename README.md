@@ -48,3 +48,4 @@ then run `Display Coverage` via Command Pallate
 - VotingEscrow.sol is veSECT forked for fiatDAO
 - bSECT.sol is a token that can be converted to SECT token given a set price. User sends x bSECT tokens + x \* price of underlying tokens and recieves SECT tokens.
 - lveSECT is a token that can be redemeed for veSECT w a 6m lockup at the time of conversion.
+- RewardDistributor is a Merkle distributor that distributes 50% bSECT + 50% lveSECT
