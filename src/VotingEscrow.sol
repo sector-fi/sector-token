@@ -8,6 +8,14 @@ import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/I
 import { IVotingEscrow } from "./interfaces/IVotingEscrow.sol";
 import { IBlocklist } from "./interfaces/IBlocklist.sol";
 
+/// @dev forked from  https://github.com/fiatdao/veToken/blob/main/contracts/VotingEscrow.sol
+/// Changes:
+///  - add lveSECToken storage for a contract that can call lockFor on behalf of a user
+///	 - add updateLveSECT method - only owner can update lveSECToken
+///  - add lockFor that allow a smart contract to lock tokens on behalf of a user
+///  - _lockFor logic requirement relaxed to allow update non-empty, non-delegated locks
+///  - and increaseAmountFor method anyone can call to add more tokens to a lock
+
 /// @title  Delegated Voting Escrow
 /// @notice An ERC20 token that allocates users a virtual balance depending
 /// on the amount of tokens locked and their remaining lock duration. The
@@ -42,6 +50,7 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	event UpdatePenaltyRecipient(address indexed recipient);
 	event CollectPenalty(uint256 amount, address indexed recipient);
 	event Unlock();
+	event UpdateLveSECT(address indexed lveSECT);
 
 	// Shared global state
 	IERC20 public immutable token;
@@ -54,6 +63,7 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	uint256 public penaltyAccumulated; // accumulated and unwithdrawn penalty payments
 	address public blocklist;
 	uint256 public supply;
+	address public lveSECT;
 
 	// Lock state
 	uint256 public globalEpoch;
@@ -135,6 +145,11 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 		_;
 	}
 
+	modifier onlyLveSECT() {
+		require(msg.sender == lveSECT, "Only lveSECT");
+		_;
+	}
+
 	/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~ ///
 	///       Owner Functions       ///
 	/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~ ///
@@ -184,6 +199,12 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 			_delegate(delegatee, fromLocked, value, LockAction.UNDELEGATE);
 			_delegate(_addr, locked_, value, LockAction.DELEGATE);
 		}
+	}
+
+	/// @notice Updates the lveSECT contract
+	function updateLveSECT(address _addr) external onlyOwner {
+		lveSECT = _addr;
+		emit UpdateLveSECT(_addr);
 	}
 
 	/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~ ///
@@ -391,6 +412,12 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 		_checkpoint(address(0), empty, empty);
 	}
 
+	/// @notice Creates a new lock
+	/// @param _value Amount of token to lock
+	/// @param _unlockTime Expiration time of the lock
+	/// @dev `_value` is (unsafely) downcasted from `uint256` to `int128`
+	/// and `_unlockTime` is (unsafely) downcasted from `uint256` to `uint96`
+	/// assuming that the values never reach the respective max values
 	function createLock(
 		uint256 _value,
 		uint256 _unlockTime
@@ -398,20 +425,21 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 		_lockFor(msg.sender, _value, _unlockTime);
 	}
 
-	function lockFor(
-		address account_,
-		uint256 value_,
-		uint256 unlockTime_
-	) external override nonReentrant checkBlocklist {
-		_lockFor(account_, value_, unlockTime_);
-	}
-
-	/// @notice Creates a new lock
+	/// @notice lveSECT can create (or update) a lock for a user
+	/// @param _account Address of the user
 	/// @param _value Amount of token to lock
 	/// @param _unlockTime Expiration time of the lock
 	/// @dev `_value` is (unsafely) downcasted from `uint256` to `int128`
 	/// and `_unlockTime` is (unsafely) downcasted from `uint256` to `uint96`
 	/// assuming that the values never reach the respective max values
+	function lockFor(
+		address _account,
+		uint256 _value,
+		uint256 _unlockTime
+	) external override nonReentrant checkBlocklist onlyLveSECT {
+		_lockFor(_account, _value, _unlockTime);
+	}
+
 	function _lockFor(address account, uint256 _value, uint256 _unlockTime) internal {
 		uint256 unlock_time = _floorToWeek(_unlockTime); // Locktime is rounded down to weeks
 		LockedBalance memory locked_ = locked[account];

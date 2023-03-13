@@ -43,6 +43,7 @@ contract lveSectTest is Setup {
 		mintLveSectTo(user1, amnt);
 
 		lveSect.setVeToken(address(veSect));
+		veSect.updateLveSECT(address(lveSect));
 
 		// user1 converts 10 SECT to veSECT
 		vm.prank(user1);
@@ -66,6 +67,8 @@ contract lveSectTest is Setup {
 		uint amnt = 10e18;
 
 		lveSect.setVeToken(address(veSect));
+		veSect.updateLveSECT(address(lveSect));
+
 		mintLveSectTo(user1, amnt);
 
 		lockSect(user1, amnt, 365 days);
@@ -73,6 +76,13 @@ contract lveSectTest is Setup {
 		vm.prank(user1);
 		vm.expectRevert("Only increase lock end");
 		lveSect.convertToLock(amnt);
+	}
+
+	function testOnlyLveSect() public {
+		lockSect(user1, 100e18, 7 days);
+		// attacker should not be able to lock users tokens for longer
+		vm.expectRevert("Only lveSECT");
+		veSect.lockFor(user1, 1, block.timestamp + 2 * 364 days);
 	}
 
 	function testIncreaseLockAmnt() public {
