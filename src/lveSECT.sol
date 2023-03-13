@@ -31,6 +31,7 @@ contract lveSECT is ERC20, Ownable {
 
 	/// @notice existing lock time must be less than the new lock time and will be incrased
 	/// front-end UI should notify the user
+	/// @notice user must not have a delegated lock - UI should do a check
 	function convertToLock(uint256 amount) public {
 		if (address(veSECT) == address(0)) revert veSECTNotSet();
 		_burn(msg.sender, amount);

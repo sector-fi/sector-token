@@ -41,7 +41,10 @@ let charlie: SignerWithAddress;
 let david: SignerWithAddress;
 let eve: SignerWithAddress;
 let francis: SignerWithAddress;
+let greg: SignerWithAddress;
+let hank: SignerWithAddress;
 let treasury: SignerWithAddress;
+
 //let nexus: Nexus
 let govMock: MockERC20;
 async function latestBlockBN() {
@@ -65,6 +68,8 @@ describe('VotingEscrow Math test', () => {
       david,
       eve,
       francis,
+      greg,
+      hank,
       treasury,
     ] = accounts;
   });
@@ -304,6 +309,12 @@ describe('VotingEscrow Math test', () => {
         .connect(fundManager)
         .transfer(francis.address, simpleToExactAmount(1, 22));
       await govMock
+        .connect(fundManager)
+        .transfer(greg.address, simpleToExactAmount(1, 22));
+      await govMock
+        .connect(fundManager)
+        .transfer(hank.address, simpleToExactAmount(1, 22));
+      await govMock
         .connect(alice)
         .approve(votingLockup.address, simpleToExactAmount(100, 21));
       await govMock
@@ -320,6 +331,12 @@ describe('VotingEscrow Math test', () => {
         .approve(votingLockup.address, simpleToExactAmount(100, 21));
       await govMock
         .connect(francis)
+        .approve(votingLockup.address, simpleToExactAmount(100, 21));
+      await govMock
+        .connect(greg)
+        .approve(votingLockup.address, simpleToExactAmount(100, 21));
+      await govMock
+        .connect(hank)
         .approve(votingLockup.address, simpleToExactAmount(100, 21));
     });
     describe('checking initial settings', () => {
@@ -354,12 +371,19 @@ describe('VotingEscrow Math test', () => {
         await votingLockup
           .connect(francis)
           .createLock(stakeAmt1, start.add(TWO_YEARS));
+        await votingLockup
+          .connect(greg)
+          .createLock(stakeAmt1, start.add(ONE_WEEK));
+        await votingLockup
+          .connect(hank)
+          .createLock(stakeAmt1, start.add(ONE_YEAR));
 
         const aliceData = await snapshotData(alice);
         const bobData = await snapshotData(bob);
         const charlieData = await snapshotData(charlie);
         const eveData = await snapshotData(eve);
         const francisData = await snapshotData(francis);
+
         // Bias
         assertBNClosePercent(
           aliceData.userLastPoint.bias,
@@ -393,16 +417,23 @@ describe('VotingEscrow Math test', () => {
             .connect(other)
             .createLock(BN.from(0), start.add(ONE_WEEK))
         ).to.be.revertedWith('Only non zero amount');
-        await expect(
-          votingLockup
-            .connect(alice)
-            .createLock(BN.from(1), start.add(ONE_WEEK))
-        ).to.be.revertedWith('Lock exists');
+        // await expect(
+        //   votingLockup
+        //     .connect(alice)
+        //     .createLock(BN.from(1), start.add(ONE_WEEK))
+        // ).to.be.revertedWith('Only increase lock end');
         await expect(
           votingLockup
             .connect(other)
             .createLock(BN.from(1), start.sub(ONE_WEEK))
         ).to.be.revertedWith('Only future lock end');
+
+        await votingLockup.connect(greg).delegate(hank.address);
+        await expect(
+          votingLockup
+            .connect(greg)
+            .createLock(BN.from(1), start.sub(TWO_YEARS))
+        ).to.be.revertedWith('Delegated lock');
       });
       it('only allows creation up until END date', async () => {
         await expect(

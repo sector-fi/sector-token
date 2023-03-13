@@ -419,6 +419,7 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 		// Validate inputs
 		require(_value != 0, "Only non zero amount");
 		// require(locked_.amount == 0, "Lock exists");
+		// we can relax the above condition for non-delegated accounts
 		require(locked_.delegatee == account || locked_.amount == 0, "Delegated lock");
 		require(unlock_time >= locked_.end, "Only increase lock end"); // from using quitLock, user should increaseAmount instead
 		require(unlock_time > block.timestamp, "Only future lock end");
