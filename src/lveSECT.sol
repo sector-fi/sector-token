@@ -11,10 +11,11 @@ contract lveSECT is ERC20, Ownable {
 	IERC20 public immutable sect;
 
 	IVotingEscrow public veSECT;
-	uint duration = 182 days; // ~6 months
+	uint256 public duration;
 
-	constructor(address sect_) ERC20("liquid veSECT", "lveSECT") {
+	constructor(address sect_, uint256 duration_) ERC20("liquid veSECT", "lveSECT") {
 		sect = IERC20(sect_);
+		duration = duration_;
 	}
 
 	function setVeToken(address veToken_) public onlyOwner {
@@ -35,7 +36,7 @@ contract lveSECT is ERC20, Ownable {
 	function convertToLock(uint256 amount) public {
 		if (address(veSECT) == address(0)) revert veSECTNotSet();
 		_burn(msg.sender, amount);
-		uint expiry = block.timestamp + duration;
+		uint256 expiry = block.timestamp + duration;
 		veSECT.lockFor(msg.sender, amount, expiry);
 		emit ConvertToLock(msg.sender, amount, expiry);
 	}
@@ -44,8 +45,8 @@ contract lveSECT is ERC20, Ownable {
 	/// and a lock with a longer duration than the new lock time
 	function addValueToLock(uint256 amount) public {
 		_burn(msg.sender, amount);
-		uint expiry = block.timestamp + duration;
-		uint lockEnd = veSECT.lockEnd(msg.sender);
+		uint256 expiry = block.timestamp + duration;
+		uint256 lockEnd = veSECT.lockEnd(msg.sender);
 		if (expiry > lockEnd) revert LockDurationTooShort();
 		veSECT.increaseAmountFor(msg.sender, amount);
 		emit AddValueToLock(msg.sender, amount);

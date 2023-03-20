@@ -10,8 +10,8 @@ import { IBlocklist } from "./interfaces/IBlocklist.sol";
 
 /// @dev forked from  https://github.com/fiatdao/veToken/blob/main/contracts/VotingEscrow.sol
 /// Changes:
-///  - add lveSECToken storage for a contract that can call lockFor on behalf of a user
-///	 - add updateLveSECT method - only owner can update lveSECToken
+///  - add lockerWhitelist storage for a contracts that can call lockFor on behalf of a user
+///	 - add updateLockerWhitelist method - only owner can update lockerWhitelist
 ///  - add lockFor that allow a smart contract to lock tokens on behalf of a user
 ///  - _lockFor logic requirement relaxed to allow update non-empty, non-delegated locks
 ///  - and increaseAmountFor method anyone can call to add more tokens to a lock
@@ -50,7 +50,7 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	event UpdatePenaltyRecipient(address indexed recipient);
 	event CollectPenalty(uint256 amount, address indexed recipient);
 	event Unlock();
-	event UpdateLveSECT(address indexed lveSECT);
+	event UpdateLockerWhitelist(address indexed addr, bool allowed);
 
 	// Shared global state
 	IERC20 public immutable token;
@@ -63,7 +63,8 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	uint256 public penaltyAccumulated; // accumulated and unwithdrawn penalty payments
 	address public blocklist;
 	uint256 public supply;
-	address public lveSECT;
+	// a list of contracts that are allowed to lock tokens on behalf of a users
+	mapping(address => bool) public lockerWhitelist;
 
 	// Lock state
 	uint256 public globalEpoch;
@@ -145,8 +146,8 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 		_;
 	}
 
-	modifier onlyLveSECT() {
-		require(msg.sender == lveSECT, "Only lveSECT");
+	modifier onlyLocker() {
+		require(lockerWhitelist[msg.sender], "Only Whitelisted Locker");
 		_;
 	}
 
@@ -201,10 +202,10 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 		}
 	}
 
-	/// @notice Updates the lveSECT contract
-	function updateLveSECT(address _addr) external onlyOwner {
-		lveSECT = _addr;
-		emit UpdateLveSECT(_addr);
+	/// @notice Updates the locker whitelist
+	function updateLockerWhitelist(address _addr, bool allowed) external onlyOwner {
+		lockerWhitelist[_addr] = allowed;
+		emit UpdateLockerWhitelist(_addr, true);
 	}
 
 	/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~ ///
@@ -223,9 +224,15 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	/// @return bias The last recorded virtual balance
 	/// @return slope The last recorded linear decay
 	/// @return ts The last recorded timestamp
-	function getLastUserPoint(
-		address _addr
-	) external view returns (int128 bias, int128 slope, uint256 ts) {
+	function getLastUserPoint(address _addr)
+		external
+		view
+		returns (
+			int128 bias,
+			int128 slope,
+			uint256 ts
+		)
+	{
 		uint256 uepoch = userPointEpoch[_addr];
 		if (uepoch == 0) {
 			return (0, 0, 0);
@@ -418,10 +425,12 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	/// @dev `_value` is (unsafely) downcasted from `uint256` to `int128`
 	/// and `_unlockTime` is (unsafely) downcasted from `uint256` to `uint96`
 	/// assuming that the values never reach the respective max values
-	function createLock(
-		uint256 _value,
-		uint256 _unlockTime
-	) external override nonReentrant checkBlocklist {
+	function createLock(uint256 _value, uint256 _unlockTime)
+		external
+		override
+		nonReentrant
+		checkBlocklist
+	{
 		_lockFor(msg.sender, _value, _unlockTime);
 	}
 
@@ -436,11 +445,15 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 		address _account,
 		uint256 _value,
 		uint256 _unlockTime
-	) external override nonReentrant checkBlocklist onlyLveSECT {
+	) external override nonReentrant checkBlocklist onlyLocker {
 		_lockFor(_account, _value, _unlockTime);
 	}
 
-	function _lockFor(address account, uint256 _value, uint256 _unlockTime) internal {
+	function _lockFor(
+		address account,
+		uint256 _value,
+		uint256 _unlockTime
+	) internal {
 		uint256 unlock_time = _floorToWeek(_unlockTime); // Locktime is rounded down to weeks
 		LockedBalance memory locked_ = locked[account];
 		LockedBalance memory oldLock = _copyLock(locked_);
@@ -476,10 +489,12 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	/// Does record a new checkpoint for the lock
 	/// `_value` is (unsafely) downcasted from `uint256` to `int128` assuming
 	/// that the max value is never reached in practice
-	function increaseAmountFor(
-		address account,
-		uint256 _value
-	) external override nonReentrant checkBlocklist {
+	function increaseAmountFor(address account, uint256 _value)
+		external
+		override
+		nonReentrant
+		checkBlocklist
+	{
 		_increaseAmount(account, _value);
 	}
 
@@ -824,10 +839,12 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	/// @param _owner The address of the lock owner for which to return voting power
 	/// @param _blockNumber The block at which to calculate the lock's voting power
 	/// @return uint256 Voting power of the lock
-	function balanceOfAt(
-		address _owner,
-		uint256 _blockNumber
-	) public view override returns (uint256) {
+	function balanceOfAt(address _owner, uint256 _blockNumber)
+		public
+		view
+		override
+		returns (uint256)
+	{
 		require(_blockNumber <= block.number, "Only past block number");
 
 		// Get most recent user Point to block

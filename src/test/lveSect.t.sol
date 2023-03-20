@@ -18,7 +18,7 @@ contract lveSectTest is Setup {
 		assertEq(lveSect.balanceOf(user1), 10e18);
 	}
 
-	function mintLveSectTo(address _to, uint _amount) public {
+	function mintLveSectTo(address _to, uint256 _amount) public {
 		// first allocate SECT to owner
 		sect.allocate(self, _amount);
 		// approve amnt
@@ -39,11 +39,11 @@ contract lveSectTest is Setup {
 	}
 
 	function testConvertToLock() public {
-		uint amnt = 10e18;
+		uint256 amnt = 10e18;
 		mintLveSectTo(user1, amnt);
 
 		lveSect.setVeToken(address(veSect));
-		veSect.updateLveSECT(address(lveSect));
+		veSect.updateLockerWhitelist(address(lveSect), true);
 
 		// user1 converts 10 SECT to veSECT
 		vm.prank(user1);
@@ -51,10 +51,10 @@ contract lveSectTest is Setup {
 
 		assertEq(sect.balanceOf(address(lveSect)), 0);
 		assertEq(lveSect.balanceOf(user1), 0);
-		uint voteWeight = veSect.balanceOf(user1);
+		uint256 voteWeight = veSect.balanceOf(user1);
 		// max lock is 2 years
-		// 6 months is approx 1/4 of 2 years
-		assertApproxEqRel(voteWeight, amnt / 4, .01e18);
+		// 3 months is approx 1/8 of 2 years
+		assertApproxEqRel(voteWeight, amnt / 8, .01e18);
 
 		// test add to lock
 		mintLveSectTo(user1, amnt);
@@ -64,10 +64,10 @@ contract lveSectTest is Setup {
 	}
 
 	function testConvertFail() public {
-		uint amnt = 10e18;
+		uint256 amnt = 10e18;
 
 		lveSect.setVeToken(address(veSect));
-		veSect.updateLveSECT(address(lveSect));
+		veSect.updateLockerWhitelist(address(lveSect), true);
 
 		mintLveSectTo(user1, amnt);
 
@@ -78,21 +78,43 @@ contract lveSectTest is Setup {
 		lveSect.convertToLock(amnt);
 	}
 
-	function testOnlyLveSect() public {
+	function testOnlyWhitelistedLocker() public {
+		lveSect.setVeToken(address(veSect));
 		lockSect(user1, 100e18, 7 days);
+
 		// attacker should not be able to lock users tokens for longer
-		vm.expectRevert("Only lveSECT");
+		vm.expectRevert("Only Whitelisted Locker");
 		veSect.lockFor(user1, 1, block.timestamp + 2 * 364 days);
 	}
 
+	function testWhitelist() public {
+		uint256 amnt = 10e18;
+		mintLveSectTo(user1, amnt);
+
+		lveSect.setVeToken(address(veSect));
+		veSect.updateLockerWhitelist(address(lveSect), true);
+
+		// user1 converts 10 SECT to veSECT
+		vm.prank(user1);
+		lveSect.convertToLock(amnt);
+
+		// no longer works when not whitelisted
+		mintLveSectTo(user1, amnt);
+
+		veSect.updateLockerWhitelist(address(lveSect), false);
+		vm.expectRevert("Only Whitelisted Locker");
+		vm.prank(user1);
+		lveSect.convertToLock(amnt);
+	}
+
 	function testIncreaseLockAmnt() public {
-		uint amnt = 10e18;
+		uint256 amnt = 10e18;
 
 		lveSect.setVeToken(address(veSect));
 		mintLveSectTo(user1, amnt);
 
 		lockSect(user1, amnt, 365 days);
-		uint voteWeight = veSect.balanceOf(user1);
+		uint256 voteWeight = veSect.balanceOf(user1);
 
 		vm.prank(user1);
 		lveSect.addValueToLock(amnt);
@@ -101,20 +123,24 @@ contract lveSectTest is Setup {
 	}
 
 	function testIncreaseLockAmntFail() public {
-		uint amnt = 10e18;
+		uint256 amnt = 10e18;
 
 		lveSect.setVeToken(address(veSect));
 		mintLveSectTo(user1, amnt);
 
 		lockSect(user1, amnt, 10 days);
-		uint voteWeight = veSect.balanceOf(user1);
+		uint256 voteWeight = veSect.balanceOf(user1);
 
 		vm.prank(user1);
 		vm.expectRevert(lveSECT.LockDurationTooShort.selector);
 		lveSect.addValueToLock(amnt);
 	}
 
-	function lockSect(address user, uint amnt, uint duration) public {
+	function lockSect(
+		address user,
+		uint256 amnt,
+		uint256 duration
+	) public {
 		// first allocate SECT to user
 		sect.allocate(user, amnt);
 		vm.startPrank(user);

@@ -21,7 +21,7 @@ contract Setup is SectorTest {
 	function setupTests() public {
 		sect = new SECT();
 		underlying = new MockERC20("USDC", "USDC", 6);
-		lveSect = new lveSECT(address(sect));
+		lveSect = new lveSECT(address(sect), 91 days); // 3 month lock duration
 		bSect = new bSECT(address(sect), address(underlying));
 		veSect = new VotingEscrow(owner, self, address(sect), "veSECT", "veSECT");
 		distributor = new RewardDistributor(
