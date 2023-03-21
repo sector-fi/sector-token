@@ -35,7 +35,6 @@ interface IRewardDistributor is IRewardDistributorEvents {
 	/// @dev Claims the given amount of the token for the account. Reverts if the inputs are not a leaf in the tree
 	///      or the total claimed amount for the account is more than the leaf amount.
 	function claim(
-		uint256 index,
 		address account,
 		uint256 totalAmount,
 		bytes32[] calldata merkleProof

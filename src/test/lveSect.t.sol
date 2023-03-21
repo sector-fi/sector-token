@@ -19,8 +19,6 @@ contract lveSectTest is Setup {
 	}
 
 	function mintLveSectTo(address _to, uint256 _amount) public {
-		// first allocate SECT to owner
-		sect.allocate(self, _amount);
 		// approve amnt
 		sect.approve(address(lveSect), _amount);
 		// mint to user
@@ -129,7 +127,6 @@ contract lveSectTest is Setup {
 		mintLveSectTo(user1, amnt);
 
 		lockSect(user1, amnt, 10 days);
-		uint256 voteWeight = veSect.balanceOf(user1);
 
 		vm.prank(user1);
 		vm.expectRevert(lveSECT.LockDurationTooShort.selector);
@@ -142,7 +139,7 @@ contract lveSectTest is Setup {
 		uint256 duration
 	) public {
 		// first allocate SECT to user
-		sect.allocate(user, amnt);
+		sect.transfer(user, amnt);
 		vm.startPrank(user);
 		sect.approve(address(veSect), amnt);
 		// lock to user

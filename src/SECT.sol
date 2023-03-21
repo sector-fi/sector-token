@@ -1,19 +1,16 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.16;
+pragma solidity 0.8.16;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-contract SECT is ERC20, Ownable {
+/// @title Sector Token
+/// @dev max supply is immediately minted to deployer to deposit into a governance multisig
+contract SECT is ERC20 {
+	uint256 public constant MAX_SUPPLY = 100000000e18; /// 100,000,000 SECT
+
 	constructor() ERC20("Sector", "SECT") {
-		// mint 100 million tokens to the contract
-		_mint(address(this), 100000000e18);
-	}
-
-	/// @dev owner can allocate tokens to a user
-	function allocate(address to_, uint256 amount_) public onlyOwner {
-		_transfer(address(this), to_, amount_);
+		// mint max supply to deployer
+		_mint(msg.sender, MAX_SUPPLY);
 	}
 
 	/// @notice Burn tokens

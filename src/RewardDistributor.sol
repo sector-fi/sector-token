@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.16;
+pragma solidity 0.8.16;
 
 // partially inspired by
 // https://github.com/Gearbox-protocol/rewards/blob/master/contracts/AirdropDistributor.sol
@@ -24,7 +24,12 @@ contract RewardDistributor is Ownable, IRewardDistributor {
 	/// @dev The mapping that stores amounts already claimed by users
 	mapping(address => uint256) public claimed;
 
-	constructor(address token_, address bToken_, address lveToken_, bytes32 merkleRoot_) {
+	constructor(
+		address token_,
+		address bToken_,
+		address lveToken_,
+		bytes32 merkleRoot_
+	) {
 		token = IERC20(token_);
 		bToken = IbSect(bToken_);
 		lveToken = IveSect(lveToken_);
@@ -40,15 +45,13 @@ contract RewardDistributor is Ownable, IRewardDistributor {
 	}
 
 	function claim(
-		uint256 index,
 		address account,
 		uint256 totalAmount,
 		bytes32[] calldata merkleProof
 	) external override {
+		require(merkleRoot != bytes32(0), "MerkleDistributor: No merkle root set");
 		require(claimed[account] < totalAmount, "MerkleDistributor: Nothing to claim");
 
-		// this is gearbox merkle version
-		// bytes32 node = keccak256(abi.encodePacked(account, totalAmount));
 		bytes32 node = keccak256(bytes.concat(keccak256(abi.encode(account, totalAmount))));
 
 		require(
@@ -59,9 +62,8 @@ contract RewardDistributor is Ownable, IRewardDistributor {
 		uint256 claimedAmount = totalAmount - claimed[account];
 		claimed[account] += claimedAmount;
 
-		// TODO: wrap token into bToken and lveToken and distribute 1/2 of each
-		uint bTokenAmount = claimedAmount / 2;
-		uint lveTokenAmount = claimedAmount - bTokenAmount;
+		uint256 bTokenAmount = claimedAmount / 2;
+		uint256 lveTokenAmount = claimedAmount - bTokenAmount;
 		bToken.mintTo(account, bTokenAmount);
 		lveToken.mintTo(account, lveTokenAmount);
 

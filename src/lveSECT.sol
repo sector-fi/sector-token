@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.16;
+pragma solidity 0.8.16;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import { ERC20, IERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { IVotingEscrow } from "./interfaces/IVotingEscrow.sol";
 
-import "hardhat/console.sol";
+// import "hardhat/console.sol";
 
 contract lveSECT is ERC20, Ownable {
 	IERC20 public immutable sect;

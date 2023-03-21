@@ -6,7 +6,7 @@ import { Setup } from "./Setup.sol";
 import "hardhat/console.sol";
 
 contract bSectTest is Setup {
-	uint private price = 2e6; // 2 USDC per 1 SECT
+	uint256 private price = 2e6; // 2 USDC per 1 SECT
 
 	function setUp() public {
 		setupTests();
@@ -45,8 +45,8 @@ contract bSectTest is Setup {
 		assertEq(bSect.price(), price);
 	}
 
-	function testRoundingFuzz(uint x) public {
-		uint amnt = bound(x, 1, .5e12);
+	function testRoundingFuzz(uint256 x) public {
+		uint256 amnt = bound(x, 1, .5e12);
 		mintBSectTo(user1, amnt);
 
 		// check that minimum amount is enforced
@@ -62,9 +62,7 @@ contract bSectTest is Setup {
 		assertEq(underlying.balanceOf(user1), 0);
 	}
 
-	function mintBSectTo(address _to, uint _amount) public {
-		// first allocate SECT to owner
-		sect.allocate(self, _amount);
+	function mintBSectTo(address _to, uint256 _amount) public {
 		// approve amnt
 		sect.approve(address(bSect), _amount);
 		// mint to user

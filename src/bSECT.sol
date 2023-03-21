@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.16;
+pragma solidity 0.8.16;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import { ERC20, IERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 contract bSECT is ERC20, Ownable {
@@ -13,7 +13,7 @@ contract bSECT is ERC20, Ownable {
 	IERC20 immutable underlying;
 
 	// price per 1e18 SECT that a holder must pay to convert to sect token
-	uint public price;
+	uint256 public price;
 
 	constructor(address SECT_, address underlying_) ERC20("bSECT", "bSECT") {
 		SECT = IERC20(SECT_);
@@ -21,7 +21,7 @@ contract bSECT is ERC20, Ownable {
 	}
 
 	/// @dev price must be set immediately upon liquidity deployment
-	function setPrice(uint price_) public onlyOwner {
+	function setPrice(uint256 price_) public onlyOwner {
 		price = price_;
 		emit SetPrice(price_);
 	}
@@ -35,9 +35,9 @@ contract bSECT is ERC20, Ownable {
 	function convert(uint256 amount) public {
 		if (price == 0) revert PriceNotSet();
 		_burn(msg.sender, amount);
-		uint num = amount * price;
+		uint256 num = amount * price;
 		// round up to avoid griefing
-		uint underlyingAmnt = num / 1e18 + (num % 1e18 > 0 ? 1 : 0);
+		uint256 underlyingAmnt = num / 1e18 + (num % 1e18 > 0 ? 1 : 0);
 		underlying.safeTransferFrom(msg.sender, address(this), underlyingAmnt);
 		SECT.transfer(msg.sender, amount);
 		emit Convert(msg.sender, amount);
@@ -47,7 +47,7 @@ contract bSECT is ERC20, Ownable {
 		underlying.safeTransfer(to, underlying.balanceOf(address(this)));
 	}
 
-	event SetPrice(uint price);
+	event SetPrice(uint256 price);
 	event Convert(address indexed user, uint256 amount);
 
 	error PriceNotSet();

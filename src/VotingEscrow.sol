@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-pragma solidity ^0.8.3;
+pragma solidity 0.8.16;
 
 import { ReentrancyGuard } from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -622,7 +622,8 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 		}
 		LockedBalance memory locked_ = locked[msg.sender];
 		// Validate inputs
-		require(!IBlocklist(blocklist).isBlocked(_addr), "Blocked contract");
+		if (blocklist != address(0))
+			require(!IBlocklist(blocklist).isBlocked(_addr), "Blocked contract");
 		require(locked_.amount > 0, "No lock");
 		require(locked_.end > block.timestamp, "Lock expired");
 		require(locked_.delegatee != _addr, "Already delegated");
