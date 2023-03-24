@@ -26,6 +26,10 @@ contract RewardDistributor is Ownable, IRewardDistributor {
 	/// @dev The mapping that stores amounts already claimed by users
 	mapping(address => uint256) public claimed;
 
+	/// @param token_ The token to distribute
+	/// @param bToken_ The bSECT token
+	/// @param lveToken_ The lveSECT token
+	/// @param merkleRoot_ The merkle root of the total claimable balances
 	constructor(
 		address token_,
 		address bToken_,
@@ -48,7 +52,7 @@ contract RewardDistributor is Ownable, IRewardDistributor {
 		emit RootUpdated(oldRoot, newRoot);
 	}
 
-	/// @dev Claims the given amount of the token for the account. Reverts if the inputs are not a leaf in the tree
+	/// @notice Claims the given amount of the token for the account. Reverts if the inputs are not a leaf in the tree
 	/// @param account The account to claim for
 	/// @param totalAmount The total amount of token to claim
 	/// @param merkleProof The merkle proof of the claim

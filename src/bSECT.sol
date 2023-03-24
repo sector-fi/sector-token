@@ -5,27 +5,40 @@ import { ERC20, IERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
+/// @title bSECT token
+/// @author @flashloner
+/// @notice bSECT is a token that can be converted to SECT for a fixed price denominated in underlying
 contract bSECT is ERC20, Ownable {
 	using SafeERC20 for IERC20;
 
+	/// @dev SECT token
 	IERC20 public immutable SECT;
 
+	/// @dev underlying token required to convert bSECT to SECT
 	IERC20 immutable underlying;
 
 	// price per 1e18 SECT that a holder must pay to convert to sect token
 	uint256 public price;
 
+	/// @notice Construct a new bSECT token
+	/// @param SECT_ SECT token address
+	/// @param underlying_ Underlying token address
 	constructor(address SECT_, address underlying_) ERC20("bSECT", "bSECT") {
 		SECT = IERC20(SECT_);
 		underlying = IERC20(underlying_);
 	}
 
+	/// @notice Set price per 1e18 SECT that a holder must pay to convert to sect token
 	/// @dev price must be set immediately upon liquidity deployment
+	/// @param price_ Price per 1e18 SECT that a holder must pay to convert to sect token
 	function setPrice(uint256 price_) public onlyOwner {
 		price = price_;
 		emit SetPrice(price_);
 	}
 
+	/// @notice Mint bSECT to an account
+	/// @param to Account to mint to
+	/// @param amount Amount to mint
 	function mintTo(address to, uint256 amount) public {
 		// sect is a known contract, so we can use transferFrom
 		SECT.transferFrom(msg.sender, address(this), amount);
