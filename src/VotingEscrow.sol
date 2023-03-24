@@ -77,7 +77,7 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	// Voting token
 	string public name;
 	string public symbol;
-	uint256 public decimals;
+	uint256 public immutable decimals;
 
 	// Structs
 	struct Point {

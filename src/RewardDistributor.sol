@@ -12,6 +12,8 @@ import { IbSect, IveSect } from "./interfaces/ITokens.sol";
 
 // import "hardhat/console.sol";
 
+/// @notice This contract distributes 50% lveSECT and 50% bSECT tokens to users
+/// it can be used to continuously distribute rewards to users
 contract RewardDistributor is Ownable, IRewardDistributor {
 	/// @dev Returns the token distributed by the contract
 	IERC20 public immutable override token;
@@ -38,12 +40,18 @@ contract RewardDistributor is Ownable, IRewardDistributor {
 		token.approve(lveToken_, type(uint256).max);
 	}
 
+	/// @notice Updates the merkle root - this can be used to increment total reward amounts
+	/// @param newRoot The new merkle root
 	function updateMerkleRoot(bytes32 newRoot) external onlyOwner {
 		bytes32 oldRoot = merkleRoot;
 		merkleRoot = newRoot;
 		emit RootUpdated(oldRoot, newRoot);
 	}
 
+	/// @dev Claims the given amount of the token for the account. Reverts if the inputs are not a leaf in the tree
+	/// @param account The account to claim for
+	/// @param totalAmount The total amount of token to claim
+	/// @param merkleProof The merkle proof of the claim
 	function claim(
 		address account,
 		uint256 totalAmount,

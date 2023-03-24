@@ -32,6 +32,8 @@ contract bSECT is ERC20, Ownable {
 		_mint(to, amount);
 	}
 
+	/// @notice Convert bSECT to SECT for a price denominated in underlying
+	/// @param amount Amount of bSECT to convert
 	function convert(uint256 amount) public {
 		if (price == 0) revert PriceNotSet();
 		_burn(msg.sender, amount);
@@ -43,6 +45,7 @@ contract bSECT is ERC20, Ownable {
 		emit Convert(msg.sender, amount);
 	}
 
+	/// @notice owner can claim underlying tokens
 	function claimUnderlying(address to) public onlyOwner {
 		underlying.safeTransfer(to, underlying.balanceOf(address(this)));
 	}

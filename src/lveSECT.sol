@@ -7,32 +7,41 @@ import { IVotingEscrow } from "./interfaces/IVotingEscrow.sol";
 
 // import "hardhat/console.sol";
 
+/// @title liquid veSECT
+/// @dev lveSECT is an ERC20 token that can be converted to a veSECT lock with a fixed lock duration
 contract lveSECT is ERC20, Ownable {
 	IERC20 public immutable sect;
 
 	IVotingEscrow public veSECT;
-	uint256 public duration;
+	uint256 public immutable duration;
 
+	/// @param sect_  address  address of the SECT token
+	/// @param duration_  uint256  lock duration in seconds
 	constructor(address sect_, uint256 duration_) ERC20("liquid veSECT", "lveSECT") {
+		require(duration_ > 7 days, "duration must be longer than a week");
+		require(duration_ < 2 * 365 days, "duration must shorter than 2 years");
 		sect = IERC20(sect_);
 		duration = duration_;
 	}
 
+	/// @notice sets the veSECT contract address
+	/// @param veToken_  address  address of the veSECT contract
 	function setVeToken(address veToken_) public onlyOwner {
 		veSECT = IVotingEscrow(veToken_);
 		sect.approve(veToken_, type(uint256).max);
 		emit SetVeToken(address(veSECT));
 	}
 
+	/// @notice mints lveSECT to the recipient
 	function mintTo(address to, uint256 amount) public {
 		// sect is a known contract, so we can use transferFrom
 		sect.transferFrom(msg.sender, address(this), amount);
 		_mint(to, amount);
 	}
 
-	/// @notice existing lock time must be less than the new lock time and will be incrased
+	/// @dev existing lock time must be less than the new lock time and will be incrased
 	/// front-end UI should notify the user
-	/// @notice user must not have a delegated lock - UI should do a check
+	/// @dev user must not have a delegated lock - UI should do a check
 	function convertToLock(uint256 amount) public {
 		if (address(veSECT) == address(0)) revert veSECTNotSet();
 		_burn(msg.sender, amount);
@@ -43,6 +52,9 @@ contract lveSECT is ERC20, Ownable {
 
 	/// @dev sender must have an existing veSECT balance
 	/// and a lock with a longer duration than the new lock time
+	/// @dev if auser previously "quit" a lock with longer duration, they need to either:
+	/// use a different account or create a a new lock with longer duration and at least 1 wei
+	/// before calling this method
 	function addValueToLock(uint256 amount) public {
 		_burn(msg.sender, amount);
 		uint256 expiry = block.timestamp + duration;
