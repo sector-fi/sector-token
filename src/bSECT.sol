@@ -15,7 +15,7 @@ contract bSECT is ERC20, Ownable {
 	IERC20 public immutable SECT;
 
 	/// @dev underlying token required to convert bSECT to SECT
-	IERC20 immutable underlying;
+	IERC20 public immutable underlying;
 
 	// price per 1e18 SECT that a holder must pay to convert to sect token
 	uint256 public price;

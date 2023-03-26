@@ -25,7 +25,7 @@ contract lveSectTest is Setup {
 		lveSect.mintTo(_to, _amount);
 	}
 
-	function testSetPrice() public {
+	function testSetVeToken() public {
 		// check that price cannot be set by non-owner
 		vm.prank(user2);
 		vm.expectRevert("Ownable: caller is not the owner");
