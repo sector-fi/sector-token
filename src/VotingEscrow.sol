@@ -50,6 +50,7 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	event UpdatePenaltyRecipient(address indexed recipient);
 	event CollectPenalty(uint256 amount, address indexed recipient);
 	event Unlock();
+	event QuitEnabled(bool quitEnabled);
 	event UpdateLockerWhitelist(address indexed addr, bool allowed);
 
 	// Shared global state
@@ -73,6 +74,7 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	mapping(address => uint256) public userPointEpoch;
 	mapping(uint256 => int128) public slopeChanges;
 	mapping(address => LockedBalance) public locked;
+	bool public quitEnabled = false; // false by default (quit disabled)
 
 	// Voting token
 	string public name;
@@ -151,6 +153,11 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 		_;
 	}
 
+	modifier canQuit() {
+		require(quitEnabled, "Quit disabled");
+		_;
+	}
+
 	/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~ ///
 	///       Owner Functions       ///
 	/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~ ///
@@ -173,6 +180,12 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	function updatePenaltyRecipient(address _addr) external onlyOwner {
 		penaltyRecipient = _addr;
 		emit UpdatePenaltyRecipient(_addr);
+	}
+
+	/// @notice add or remove ability of users to quit lock prepaturely
+	function setQuitEnabled(bool _quitEnabled) external onlyOwner {
+		quitEnabled = _quitEnabled;
+		emit QuitEnabled(_quitEnabled);
 	}
 
 	/// @notice Removes quitlock penalty by setting it to zero
@@ -692,7 +705,7 @@ contract VotingEscrow is IVotingEscrow, ReentrancyGuard {
 	/// @notice Quit an existing lock by withdrawing all tokens less a penalty
 	/// Use `withdraw` for expired locks
 	/// @dev Quitters lock expiration remains in place because it might be delegated to
-	function quitLock() external override nonReentrant {
+	function quitLock() external override nonReentrant canQuit {
 		LockedBalance memory locked_ = locked[msg.sender];
 		// Validate inputs
 		require(locked_.amount > 0, "No lock");
