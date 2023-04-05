@@ -3,7 +3,7 @@ pragma solidity 0.8.16;
 
 import { Setup } from "./Setup.sol";
 import { DisbursementCliff, IERC20 } from "../DisbursementCliff.sol";
-import { VestedVoter } from "../VestedVoter.sol";
+import { VestingVoter } from "../VestingVoter.sol";
 
 contract DisbursementCliffTest is Setup {
 	DisbursementCliff vesting;
@@ -61,8 +61,8 @@ contract DisbursementCliffTest is Setup {
 		assertEq(sect.balanceOf(user1), half);
 	}
 
-	function testVestedVoter() public {
-		VestedVoter voter = new VestedVoter(address(sect));
+	function testVestingVoter() public {
+		VestingVoter voter = new VestingVoter(address(sect));
 		address[] memory accounts = new address[](1);
 		accounts[0] = address(self);
 		address[] memory vestingContracts = new address[](1);

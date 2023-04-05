@@ -5,7 +5,7 @@ import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { DisbursementCliff } from "./DisbursementCliff.sol";
 
-contract VestedVoter is Ownable {
+contract VestingVoter is Ownable {
 	mapping(address => address) public voters;
 	address public sect;
 	uint256 public constant MAXTIME = 730 days;
