@@ -3,9 +3,12 @@ pragma solidity 0.8.16;
 
 import { Setup } from "./Setup.sol";
 import { DisbursementCliff, IERC20 } from "../DisbursementCliff.sol";
+import { VestedVoter } from "../VestedVoter.sol";
 
 contract DisbursementCliffTest is Setup {
 	DisbursementCliff vesting;
+
+	uint256 VEST_AMNT = 100e18;
 
 	function setUp() public {
 		setupTests();
@@ -22,7 +25,7 @@ contract DisbursementCliffTest is Setup {
 			cliffDate,
 			IERC20(sect)
 		);
-		sect.transfer(address(vesting), 100e18);
+		sect.transfer(address(vesting), VEST_AMNT);
 	}
 
 	function testCliff() public {
@@ -56,5 +59,28 @@ contract DisbursementCliffTest is Setup {
 		vm.prank(user1);
 		vesting.withdraw(user1, half);
 		assertEq(sect.balanceOf(user1), half);
+	}
+
+	function testVestedVoter() public {
+		VestedVoter voter = new VestedVoter(address(sect));
+		address[] memory accounts = new address[](1);
+		accounts[0] = address(self);
+		address[] memory vestingContracts = new address[](1);
+		vestingContracts[0] = address(vesting);
+		voter.setVoters(accounts, vestingContracts);
+		uint256 balance = voter.balanceOf(self);
+		assertApproxEqRel(balance, VEST_AMNT, .01e18, "vote is full amount");
+
+		skip(182 days);
+		balance = voter.balanceOf(self);
+		assertApproxEqRel(balance, (VEST_AMNT * 3) / 4, .01e18, "vote is 3/4");
+
+		skip(182 days);
+		balance = voter.balanceOf(self);
+		assertApproxEqRel(balance, VEST_AMNT / 2, .01e18, "vote is 1/2");
+
+		skip(366 days);
+		balance = voter.balanceOf(self);
+		assertApproxEqRel(balance, 0, .01e18, "vote is 0");
 	}
 }
