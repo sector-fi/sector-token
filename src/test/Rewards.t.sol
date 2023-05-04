@@ -91,10 +91,11 @@ contract RewardsTest is Setup {
 
 		// claiming 10 years worth of rewards will cost
 		// 3,261,355 gas (about 1/10th of block limit)
-		for (uint256 i = 0; i < 279; i++) {
-			uint256 amnt = 1e6;
+		uint256 rewardAmnt = 1e6;
+		uint256 i;
+		for (i; i < 279; i++) {
 			deal(address(usdc), self, amnt);
-			usdc.transfer(address(usdcRewards), amnt);
+			usdc.transfer(address(usdcRewards), rewardAmnt);
 			skip(14 days);
 			usdcRewards.addRewardRound();
 		}
@@ -103,6 +104,9 @@ contract RewardsTest is Setup {
 		vm.prank(user1);
 		usdcRewards.getReward();
 		stopMeasuringGas();
+
+		assertEq(usdcRewards.lastClaimedReward(user1), usdcRewards.getTotalRewards());
+		assertEq(usdc.balanceOf(user1), usdcAmnt + rewardAmnt * i);
 	}
 
 	function testMultipleClaims() public {
@@ -114,7 +118,7 @@ contract RewardsTest is Setup {
 		veSect.createLock(amnt, block.timestamp + 3 * 30 days);
 		vm.stopPrank();
 
-		for (uint256 i = 0; i < 10; i++) {
+		for (uint256 i; i < 10; i++) {
 			uint256 amnt = 1e6;
 			deal(address(usdc), self, amnt);
 			usdc.transfer(address(usdcRewards), amnt);
@@ -125,6 +129,8 @@ contract RewardsTest is Setup {
 			vm.prank(user1);
 			usdcRewards.getReward();
 			assertEq(usdc.balanceOf(user1), usdcAmnt + amnt * (i + 1));
+
+			assertEq(usdcRewards.lastClaimedReward(user1), usdcRewards.getTotalRewards());
 		}
 	}
 }
