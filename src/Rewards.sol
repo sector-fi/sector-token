@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import { IVotingEscrow } from "./interfaces/IVotingEscrow.sol";
 import { OwnableWithTransfer } from "./rewardModules/OwnableWithTransfer.sol";
 
-import "hardhat/console.sol";
+// import "hardhat/console.sol";
 
 /**
  * @title Implements a reward system which grant rewards based on veToken balance
@@ -109,8 +109,9 @@ contract Rewards is ReentrancyGuard, OwnableWithTransfer {
 		lastClaimedReward[msg.sender] = rewards.length;
 		if (reward == 0) return;
 
-		IERC20(rewardsToken).safeTransfer(msg.sender, reward);
 		currentBalance -= reward;
+
+		IERC20(rewardsToken).safeTransfer(msg.sender, reward);
 		emit RewardPaid(msg.sender, reward);
 	}
 
@@ -122,8 +123,6 @@ contract Rewards is ReentrancyGuard, OwnableWithTransfer {
 
 	/**
 	 * @notice Calculates how much rewards a user earned
-	 * until this moment.
-	 * @dev Only apply reward until period finish or unlock date.
 	 * @return amount of reward available to claim
 	 */
 	function earned(address owner) public view returns (uint256) {

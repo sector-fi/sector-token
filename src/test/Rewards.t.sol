@@ -60,13 +60,6 @@ contract RewardsTest is Setup {
 
 		skip(3 * 31 days);
 
-		uint256 ratio1 = (veSect.balanceOf(user1) * 100) / veSect.totalSupply();
-		uint256 ratio2 = (veSect.balanceOf(user2) * 100) / veSect.totalSupply();
-		console.log("ratios", ratio1, ratio2);
-
-		uint256 supply = veSect.totalSupply();
-		console.log("supply", supply);
-
 		uint256 u1Earned = usdcRewards.earned(user1);
 		uint256 u2Earned = usdcRewards.earned(user2);
 
@@ -100,7 +93,8 @@ contract RewardsTest is Setup {
 		// 3,261,355 gas (about 1/10th of block limit)
 		for (uint256 i = 0; i < 279; i++) {
 			uint256 amnt = 1e6;
-			deal(address(usdc), address(usdcRewards), usdcAmnt);
+			deal(address(usdc), self, amnt);
+			usdc.transfer(address(usdcRewards), amnt);
 			skip(14 days);
 			usdcRewards.addRewardRound();
 		}
@@ -109,5 +103,28 @@ contract RewardsTest is Setup {
 		vm.prank(user1);
 		usdcRewards.getReward();
 		stopMeasuringGas();
+	}
+
+	function testMultipleClaims() public {
+		uint256 amnt = 1e18;
+
+		vm.startPrank(user1);
+		deal(address(sect), user1, amnt);
+		sect.approve(address(veSect), amnt);
+		veSect.createLock(amnt, block.timestamp + 3 * 30 days);
+		vm.stopPrank();
+
+		for (uint256 i = 0; i < 10; i++) {
+			uint256 amnt = 1e6;
+			deal(address(usdc), self, amnt);
+			usdc.transfer(address(usdcRewards), amnt);
+
+			skip(14 days);
+			usdcRewards.addRewardRound();
+
+			vm.prank(user1);
+			usdcRewards.getReward();
+			assertEq(usdc.balanceOf(user1), usdcAmnt + amnt * (i + 1));
+		}
 	}
 }
