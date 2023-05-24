@@ -9,6 +9,7 @@ import { lveSECT } from "../lveSECT.sol";
 import { bSECT } from "../bSECT.sol";
 import { VotingEscrow } from "../VotingEscrow.sol";
 import { RewardDistributor } from "../RewardDistributor.sol";
+import { GenericRewardDistributor } from "../GenericRewardDistributor.sol";
 
 contract Setup is SectorTest {
 	SECT sect;
@@ -16,6 +17,7 @@ contract Setup is SectorTest {
 	bSECT bSect;
 	VotingEscrow veSect;
 	RewardDistributor distributor;
+	GenericRewardDistributor genericDistributor;
 	MockERC20 underlying;
 
 	string private checkpointLabel;
@@ -33,6 +35,7 @@ contract Setup is SectorTest {
 			address(bSect),
 			bytes32(0)
 		);
+		genericDistributor = new GenericRewardDistributor(address(lveSect), bytes32(0));
 	}
 
 	function startMeasuringGas(string memory label) internal virtual {

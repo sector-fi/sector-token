@@ -24,8 +24,8 @@ contract RewardsTest is Setup {
 		usdc = new MockERC20("USDC", "USDC", 6);
 		weth = new MockERC20("WETH", "WETH", 18);
 
-		usdcRewards = new Rewards(self, address(veSect), self, address(usdc));
-		ethRewards = new Rewards(self, address(veSect), self, address(weth));
+		usdcRewards = new Rewards(address(veSect), self, address(usdc));
+		ethRewards = new Rewards(address(veSect), self, address(weth));
 
 		deal(address(sect), user1, 1e18);
 		sect.approve(address(veSect), 1e18);
@@ -105,7 +105,7 @@ contract RewardsTest is Setup {
 		usdcRewards.getReward();
 		stopMeasuringGas();
 
-		assertEq(usdcRewards.lastClaimedReward(user1), usdcRewards.getTotalRewards());
+		assertEq(usdcRewards.firstUnclaimedReward(user1), usdcRewards.getTotalRewards());
 		assertEq(usdc.balanceOf(user1), usdcAmnt + rewardAmnt * i);
 	}
 
@@ -130,7 +130,7 @@ contract RewardsTest is Setup {
 			usdcRewards.getReward();
 			assertEq(usdc.balanceOf(user1), usdcAmnt + amnt * (i + 1));
 
-			assertEq(usdcRewards.lastClaimedReward(user1), usdcRewards.getTotalRewards());
+			assertEq(usdcRewards.firstUnclaimedReward(user1), usdcRewards.getTotalRewards());
 		}
 	}
 }

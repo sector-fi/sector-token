@@ -5,15 +5,14 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import { IVotingEscrow } from "./interfaces/IVotingEscrow.sol";
-import { OwnableWithTransfer } from "./rewardModules/OwnableWithTransfer.sol";
+import { OwnableWithTransfer } from "./utils/OwnableWithTransfer.sol";
 
 // import "hardhat/console.sol";
 
 /**
  * @title Implements a reward system which grant rewards based on veToken balance
- * @author gcontarini jocorrei
- * @notice This implementation was inspired by the StakingReward contract from Synthetixio
- * @dev Implement a new constructor to deploy this contract
+ * at specific blocks.
+ * @author flashloner
  */
 contract Rewards is ReentrancyGuard, OwnableWithTransfer {
 	using SafeERC20 for IERC20;
@@ -30,7 +29,7 @@ contract Rewards is ReentrancyGuard, OwnableWithTransfer {
 	/* ========== STATE VARIABLES ========== */
 
 	address public rewardsToken;
-	address public vault; // address of the ve vault
+	address public veToken; // address of the ve token
 	uint256 public currentBalance; // running balance of rewards in contract
 	uint256 public lastRewardTime;
 
@@ -43,17 +42,16 @@ contract Rewards is ReentrancyGuard, OwnableWithTransfer {
 	}
 
 	Reward[] public rewards;
-	mapping(address => uint256) public lastClaimedReward;
+	mapping(address => uint256) public firstUnclaimedReward;
 
 	constructor(
-		address _owner,
-		address _vault,
+		address _veToken,
 		address _manager,
 		address _rewardsToken
-	) OwnableWithTransfer(_owner) {
+	) OwnableWithTransfer(msg.sender) {
 		rewardsToken = _rewardsToken;
 		manager = _manager;
-		vault = _vault;
+		veToken = _veToken;
 	}
 
 	/* ========== RESTRICTED FUNCTIONS ========== */
@@ -66,16 +64,17 @@ contract Rewards is ReentrancyGuard, OwnableWithTransfer {
 	 * @notice Add a reward distribution round
 	 */
 	function addRewardRound() external onlyManager {
-		// Ensure the provided reward amount is not more than the balance in the contract.
+		// compute the reward amount
 		uint256 newBalance = IERC20(rewardsToken).balanceOf(address(this));
 		uint256 reward = newBalance - currentBalance;
+		if (reward == 0) revert NoRewardTokenBalance();
 
 		// make sure we don't add rounds too often
 		if (lastRewardTime + 13 days > block.timestamp) revert TooEarlyToAddReward();
 		if (rewards.length == MAX_REWARDS) revert TooManyRewards();
 
-		// ensure vault is not empty
-		if (IVotingEscrow(vault).totalSupplyAt(block.number) == 0) revert VaultIsEmpty();
+		// ensure veToken is not empty
+		if (IVotingEscrow(veToken).totalSupplyAt(block.number) == 0) revert VaultIsEmpty();
 
 		rewards.push(Reward({ blockNumber: block.number, amount: reward }));
 
@@ -101,12 +100,14 @@ contract Rewards is ReentrancyGuard, OwnableWithTransfer {
 
 	/**
 	 * @notice Claim rewards for user.
-	 * @dev In case of no rewards claimable
+	 * @dev In case threa are no claimable rewards
 	 * just update the user status and do nothing.
 	 */
 	function getReward() public nonReentrant {
 		uint256 reward = earned(msg.sender);
-		lastClaimedReward[msg.sender] = rewards.length;
+
+		// this prevents user from re-claiming prev rewards
+		firstUnclaimedReward[msg.sender] = rewards.length;
 		if (reward == 0) return;
 
 		currentBalance -= reward;
@@ -127,11 +128,11 @@ contract Rewards is ReentrancyGuard, OwnableWithTransfer {
 	 */
 	function earned(address owner) public view returns (uint256) {
 		uint256 totalRewards = 0;
-		for (uint256 i = lastClaimedReward[owner]; i < rewards.length; i++) {
+		for (uint256 i = firstUnclaimedReward[owner]; i < rewards.length; ++i) {
 			totalRewards +=
 				(rewards[i].amount *
-					IVotingEscrow(vault).balanceOfAt(owner, rewards[i].blockNumber)) /
-				IVotingEscrow(vault).totalSupplyAt(rewards[i].blockNumber);
+					IVotingEscrow(veToken).balanceOfAt(owner, rewards[i].blockNumber)) /
+				IVotingEscrow(veToken).totalSupplyAt(rewards[i].blockNumber);
 		}
 		return totalRewards;
 	}
@@ -139,11 +140,11 @@ contract Rewards is ReentrancyGuard, OwnableWithTransfer {
 	/* ========== ERRORS ========== */
 
 	error OnlyManager();
-	error NotWhitelisted();
 	error InsufficientBalance(uint256 available, uint256 required);
 	error VaultIsEmpty();
 	error TooEarlyToAddReward();
 	error TooManyRewards();
+	error NoRewardTokenBalance();
 
 	/* ========== EVENTS ========== */
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.3;
 
-import { IVotingEscrow } from "./interfaces/IVotingEscrow.sol";
+import { IVotingEscrow } from "../interfaces/IVotingEscrow.sol";
 
 /// @title A blocklist for contracts
 /// @notice Allows blocking of contracts. Blocking a contract also
