@@ -2,7 +2,6 @@
 pragma solidity ^0.8.16;
 
 import { Setup } from "./Setup.sol";
-import { lveSECT } from "../lveSECT.sol";
 
 import "hardhat/console.sol";
 
@@ -35,5 +34,44 @@ contract veSectTest is Setup {
 		vm.prank(user2);
 		vm.expectRevert("Only owner");
 		veSect.setQuitEnabled(true);
+	}
+
+	function testDelegate() public {
+		uint256 amnt = 1e18;
+		// approve amnt
+		sect.approve(address(veSect), amnt);
+		veSect.createLock(amnt, block.timestamp + 182 days);
+
+		sect.transfer(user2, amnt);
+		vm.startPrank(user2);
+		sect.approve(address(veSect), amnt);
+		veSect.createLock(amnt, block.timestamp + 182 days);
+		vm.stopPrank();
+
+		veSect.delegate(user2);
+		uint256 selfBalance = veSect.balanceOf(self);
+		uint256 user2Balance = veSect.balanceOf(user2);
+
+		console.log("self", selfBalance);
+		console.log("user2", user2Balance);
+
+		assertEq(selfBalance, 0);
+		assertApproxEqRel(user2Balance, (amnt * 2) / 4, .01e18);
+
+		sect.transfer(user2, amnt);
+		vm.startPrank(user2);
+		sect.approve(address(veSect), amnt);
+		veSect.createLock(amnt, block.timestamp + 182 days);
+		vm.stopPrank();
+
+		selfBalance = veSect.balanceOf(self);
+		user2Balance = veSect.balanceOf(user2);
+
+		console.log("self", selfBalance);
+		console.log("user2", user2Balance);
+
+		sect.approve(address(veSect), amnt);
+		vm.expectRevert("Delegated lock");
+		veSect.createLock(amnt, block.timestamp + 182 days);
 	}
 }
