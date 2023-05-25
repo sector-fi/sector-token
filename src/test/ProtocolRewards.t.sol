@@ -3,15 +3,15 @@ pragma solidity ^0.8.16;
 
 import { Setup } from "./Setup.sol";
 import { lveSECT } from "../lveSECT.sol";
-import { Rewards } from "../Rewards.sol";
+import { ProtocolRewards } from "../ProtocolRewards.sol";
 
 import { MockERC20 } from "./MockERC20.sol";
 
 import "hardhat/console.sol";
 
-contract RewardsTest is Setup {
-	Rewards usdcRewards;
-	Rewards ethRewards;
+contract ProtocolRewardsTest is Setup {
+	ProtocolRewards usdcRewards;
+	ProtocolRewards ethRewards;
 
 	MockERC20 usdc;
 	MockERC20 weth;
@@ -24,8 +24,8 @@ contract RewardsTest is Setup {
 		usdc = new MockERC20("USDC", "USDC", 6);
 		weth = new MockERC20("WETH", "WETH", 18);
 
-		usdcRewards = new Rewards(address(veSect), self, address(usdc));
-		ethRewards = new Rewards(address(veSect), self, address(weth));
+		usdcRewards = new ProtocolRewards(address(veSect), self, address(usdc));
+		ethRewards = new ProtocolRewards(address(veSect), self, address(weth));
 
 		deal(address(sect), user1, 1e18);
 		sect.approve(address(veSect), 1e18);

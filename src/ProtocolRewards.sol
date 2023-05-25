@@ -14,7 +14,7 @@ import { OwnableWithTransfer } from "./utils/OwnableWithTransfer.sol";
  * at specific blocks.
  * @author flashloner
  */
-contract Rewards is ReentrancyGuard, OwnableWithTransfer {
+contract ProtocolRewards is ReentrancyGuard, OwnableWithTransfer {
 	using SafeERC20 for IERC20;
 
 	struct Reward {
