@@ -56,7 +56,7 @@ contract ProtocolRewards is ReentrancyGuard, OwnableWithTransfer {
 
 	/* ========== RESTRICTED FUNCTIONS ========== */
 
-	function setManger(address _manager) external onlyOwner {
+	function setManager(address _manager) external onlyOwner {
 		manager = _manager;
 	}
 
