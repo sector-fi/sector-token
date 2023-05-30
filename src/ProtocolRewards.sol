@@ -56,7 +56,7 @@ contract ProtocolRewards is ReentrancyGuard, OwnableWithTransfer {
 
 	/* ========== RESTRICTED FUNCTIONS ========== */
 
-	function setManger(address _manager) external onlyOwner {
+	function setManager(address _manager) external onlyOwner {
 		manager = _manager;
 	}
 
@@ -100,7 +100,7 @@ contract ProtocolRewards is ReentrancyGuard, OwnableWithTransfer {
 
 	/**
 	 * @notice Claim rewards for user.
-	 * @dev In case threa are no claimable rewards
+	 * @dev In case there are no claimable rewards
 	 * just update the user status and do nothing.
 	 */
 	function getReward() public nonReentrant {

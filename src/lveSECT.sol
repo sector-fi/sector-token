@@ -45,10 +45,10 @@ contract lveSECT is ERC20, Ownable {
 	}
 
 	/// @notice converts lveSECT to a veSECT lock
-	/// @dev existing lock time must be less than the new lock time and will be incrased
+	/// @dev existing lock time must be less than the new lock time and will be increased
 	/// front-end UI should notify the user
 	/// user must not have a delegated lock - UI should do a check
-	/// @param amount  uint256  amount to convert
+	/// @param amount uint256  amount to convert
 	function convertToLock(uint256 amount) public {
 		if (address(veSECT) == address(0)) revert veSECTNotSet();
 		_burn(msg.sender, amount);
@@ -60,10 +60,10 @@ contract lveSECT is ERC20, Ownable {
 	/// @notice use this method to add value to an existing lock
 	/// @dev sender must have an existing veSECT balance
 	/// and a lock with a longer duration than the new lock time
-	/// if auser previously "quit" a lock with longer duration, they need to either:
+	/// if a user previously "quit" a lock with longer duration, they need to either:
 	/// use a different account or create a a new lock with longer duration and at least 1 wei
 	/// before calling this method
-	/// @param amount  uint256  amount to add to the lock
+	/// @param amount uint256  amount to add to the lock
 	function addValueToLock(uint256 amount) public {
 		_burn(msg.sender, amount);
 		uint256 expiry = block.timestamp + duration;
