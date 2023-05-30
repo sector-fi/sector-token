@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.16;
 
-import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import { IGenericRewardDistributor } from "./interfaces/IGenericRewardDistributor.sol";
 import { OwnableWithTransfer } from "./utils/OwnableWithTransfer.sol";
 
