@@ -8,8 +8,7 @@ import { OwnableWithTransfer } from "./utils/OwnableWithTransfer.sol";
 
 // import "hardhat/console.sol";
 
-/// @notice This contract distributes 50% lveSECT and 50% bSECT tokens to users
-/// it can be used to continuously distribute rewards to users
+/// @notice This contract distrubutes tokne rewards using a merkle tree
 contract GenericRewardDistributor is OwnableWithTransfer, IGenericRewardDistributor {
 	using SafeERC20 for IERC20;
 
