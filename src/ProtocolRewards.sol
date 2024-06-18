@@ -74,9 +74,9 @@ contract ProtocolRewards is ReentrancyGuard, OwnableWithTransfer {
 		if (rewards.length == MAX_REWARDS) revert TooManyRewards();
 
 		// ensure veToken is not empty
-		if (IVotingEscrow(veToken).totalSupplyAt(block.number) == 0) revert VaultIsEmpty();
+		if (IVotingEscrow(veToken).totalSupplyAt(block.number - 1) == 0) revert VaultIsEmpty();
 
-		rewards.push(Reward({ blockNumber: block.number, amount: reward }));
+		rewards.push(Reward({ blockNumber: block.number - 1, amount: reward }));
 
 		currentBalance = newBalance;
 		lastRewardTime = block.timestamp;

@@ -24,6 +24,7 @@ contract Setup is SectorTest {
 	uint256 private checkpointGasLeft = 1; // Start the slot warm.
 
 	function setupTests() public {
+		vm.roll(block.number + 1);
 		sect = new SECT();
 		underlying = new MockERC20("USDC", "USDC", 6);
 		lveSect = new lveSECT(address(sect), 91 days); // 3 month lock duration

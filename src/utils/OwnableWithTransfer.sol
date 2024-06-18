@@ -33,9 +33,11 @@ abstract contract OwnableWithTransfer {
 	/// Can only be called by the pendingOwner.
 	function acceptOwnership() external {
 		if (msg.sender != pendingOwner) revert OnlyPendingOwner();
+		address newOwner = pendingOwner;
+		address olOwner = owner;
+		owner = newOwner;
 		pendingOwner = address(0);
-		owner = pendingOwner;
-		emit OwnershipTransferred(owner, pendingOwner);
+		emit OwnershipTransferred(olOwner, newOwner);
 	}
 
 	event OwnershipTransferInitiated(address owner, address pendingOwner);
